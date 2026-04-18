@@ -38,7 +38,7 @@
             { key: 'city', type: 'text', label: 'المدينة' }
           ],
           columns: [
-            { key: 'first_name', label: 'الاسم', render: (r) => ctx.esc(`${r.first_name || ''} ${r.last_name || ''}`.trim()) },
+            { key: 'first_name', label: 'الاسم', render: (r) => `<a href="client-detail.html?id=${ctx.esc(r.id)}" style="color:var(--primary,#1e40af);font-weight:600;text-decoration:none">${ctx.esc(`${r.first_name || ''} ${r.last_name || ''}`.trim())}</a>` },
             { key: 'email', label: 'البريد الإلكتروني' },
             { key: 'phone', label: 'الهاتف' },
             { key: 'city', label: 'المدينة' },

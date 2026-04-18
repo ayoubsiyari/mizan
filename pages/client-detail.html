@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ملف الموكل - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    /* Detail-page specific styles */
+    .cd-header { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .cd-avatar {
+      width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, #1e40af, #3b82f6);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; font-weight: 700;
+    }
+    .cd-meta { flex: 1; min-width: 260px; }
+    .cd-meta h2 { margin: 0 0 4px; font-size: 1.4rem; }
+    .cd-meta-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px 20px; margin-top: 10px; font-size: .9rem;
+    }
+    .cd-meta-grid span strong { color: var(--muted); margin-inline-end: 6px; font-weight: 500; }
+
+    .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin: 20px 0 16px; overflow-x: auto; }
+    .tab { padding: 10px 16px; cursor: pointer; border: none; background: none;
+      color: var(--muted); font-weight: 600; font-size: .95rem; white-space: nowrap;
+      border-bottom: 2px solid transparent; margin-bottom: -2px; font-family: inherit; }
+    .tab.active { color: var(--brand, #1e40af); border-bottom-color: var(--brand, #1e40af); }
+    .tab:hover:not(.active) { color: var(--text); }
+
+    /* Timeline */
+    .timeline { position: relative; padding-inline-start: 28px; }
+    .timeline::before {
+      content: ''; position: absolute; inset-inline-start: 9px; top: 4px; bottom: 4px;
+      width: 2px; background: var(--border);
+    }
+    .tl-item { position: relative; padding-bottom: 18px; }
+    .tl-item:last-child { padding-bottom: 0; }
+    .tl-dot {
+      position: absolute; inset-inline-start: -24px; top: 4px;
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 3px solid #fff; box-shadow: 0 0 0 1px var(--border);
+    }
+    .tl-card { background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 14px; }
+    .tl-title { font-weight: 600; font-size: .95rem; margin-bottom: 4px; }
+    .tl-time { color: var(--muted); font-size: .8rem; }
+    .tl-meta { margin-top: 6px; font-size: .85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; }
+
+    .tl-dot.case_opened, .tl-card.case_opened { --c: #2563eb; }
+    .tl-dot.hearing, .tl-card.hearing { --c: #9333ea; }
+    .tl-dot.document, .tl-card.document { --c: #0891b2; }
+    .tl-dot.contract_created, .tl-dot.contract_signed, .tl-card.contract_created, .tl-card.contract_signed { --c: #059669; }
+    .tl-dot.invoice, .tl-card.invoice { --c: #d97706; }
+    .tl-dot.payment, .tl-card.payment { --c: #16a34a; }
+    .tl-dot.trust_deposit, .tl-dot.trust_refund { --c: #16a34a; }
+    .tl-dot.trust_withdrawal, .tl-dot.trust_fee { --c: #dc2626; }
+    .tl-dot.trust_adjustment { --c: #7c3aed; }
+    .tl-dot.note, .tl-card.note { --c: #6b7280; }
+    .tl-dot.deadline, .tl-card.deadline { --c: #dc2626; }
+    .tl-dot.task, .tl-card.task { --c: #0ea5e9; }
+    .tl-dot { background: var(--c, #6b7280); }
+    .tl-card { border-inline-start: 3px solid var(--c, var(--border)); }
+
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+    .btn-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--brand, #1e40af); text-decoration: none; font-size: .9rem;
+    }
+    .btn-link:hover { text-decoration: underline; }
+
+    .quick-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+    .tl-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+      background: var(--card); cursor: pointer; font-size: .85rem; color: var(--muted);
+      font-family: inherit; }
+    .chip.active { background: var(--brand, #1e40af); color: #fff; border-color: var(--brand, #1e40af); }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'clients',
+      title: 'ملف الموكل',
+      render: async (root, ctx) => {
+        const id = new URLSearchParams(location.search).get('id');
+        if (!id) {
+          root.innerHTML = `<div class="empty-state">لم يتم تحديد موكل. <a href="clients.html">عودة للقائمة</a></div>`;
+          return;
+        }
+        root.innerHTML = `<div class="empty-state">جارِ تحميل ملف الموكل...</div>`;
+
+        let overview;
+        try {
+          overview = (await ctx.api(`/clients/${id}/overview`)).data;
+        } catch (err) {
+          root.innerHTML = `<div class="empty-state">${ctx.esc(err.message)} — <a href="clients.html">عودة للقائمة</a></div>`;
+          return;
+        }
+
+        const c = overview.client;
+        const s = overview.stats;
+        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.company_name || '-';
+        const initials = ((c.first_name || '?')[0] + (c.last_name || '')[0]).toUpperCase();
+
+        root.innerHTML = `
+          <div style="margin-bottom:12px">
+            <a href="clients.html" class="btn-link">← عودة إلى قائمة الموكلين</a>
+          </div>
+
+          <div class="card">
+            <div class="cd-header">
+              <div class="cd-avatar">${ctx.esc(initials || '؟')}</div>
+              <div class="cd-meta">
+                <h2>${ctx.esc(fullName)}</h2>
+                <div>
+                  <span class="badge ${c.is_active ? 'active' : 'closed'}">${c.is_active ? 'نشط' : 'غير نشط'}</span>
+                  <span class="badge medium">${c.client_type === 'company' ? 'شركة' : 'فرد'}</span>
+                </div>
+                <div class="cd-meta-grid">
+                  ${c.email ? `<span><strong>البريد:</strong>${ctx.esc(c.email)}</span>` : ''}
+                  ${c.phone ? `<span><strong>الهاتف:</strong>${ctx.esc(c.phone)}</span>` : ''}
+                  ${c.national_id ? `<span><strong>رقم الهوية:</strong>${ctx.esc(c.national_id)}</span>` : ''}
+                  ${c.city ? `<span><strong>المدينة:</strong>${ctx.esc(c.city)}</span>` : ''}
+                  ${c.company_name ? `<span><strong>الشركة:</strong>${ctx.esc(c.company_name)}</span>` : ''}
+                  ${c.company_cr ? `<span><strong>السجل التجاري:</strong>${ctx.esc(c.company_cr)}</span>` : ''}
+                  <span><strong>تاريخ الإضافة:</strong>${ctx.fmtDateSmart(c.created_at)}</span>
+                </div>
+                ${c.address ? `<div style="margin-top:8px;font-size:.9rem;color:var(--muted)">${ctx.esc(c.address)}</div>` : ''}
+                ${c.notes ? `<div style="margin-top:8px;padding:8px 10px;background:#fffbeb;border-inline-start:3px solid #f59e0b;border-radius:6px;font-size:.9rem">${ctx.esc(c.notes)}</div>` : ''}
+
+                <div class="quick-actions">
+                  <a class="btn btn-primary btn-sm" href="cases.html?client_id=${ctx.esc(id)}">+ قضية جديدة</a>
+                  <a class="btn btn-secondary btn-sm" href="documents.html?client_id=${ctx.esc(id)}">+ رفع مستند</a>
+                  <a class="btn btn-secondary btn-sm" href="billing.html?client_id=${ctx.esc(id)}">+ فاتورة</a>
+                  <a class="btn btn-secondary btn-sm" href="trust.html?client_id=${ctx.esc(id)}">+ حركة أمانة</a>
+                  <a class="btn btn-secondary btn-sm" href="contracts.html?client_id=${ctx.esc(id)}">+ عقد</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat-card"><div class="stat-value">${s.cases}</div><div class="stat-label">إجمالي القضايا</div></div>
+            <div class="stat-card"><div class="stat-value">${s.openCases}</div><div class="stat-label">قضايا نشطة</div></div>
+            <div class="stat-card"><div class="stat-value">${s.upcomingHearings}</div><div class="stat-label">جلسات قادمة</div></div>
+            <div class="stat-card"><div class="stat-value">${s.documents}</div><div class="stat-label">المستندات</div></div>
+            <div class="stat-card"><div class="stat-value">${s.contracts}</div><div class="stat-label">العقود</div></div>
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(s.billed)}</div><div class="stat-label">إجمالي الفوترة</div></div>
+            <div class="stat-card"><div class="stat-value" style="color:#16a34a">${ctx.fmtMoney(s.paid)}</div><div class="stat-label">المدفوع</div></div>
+            <div class="stat-card"><div class="stat-value" style="color:${s.outstanding > 0 ? '#dc2626' : 'inherit'}">${ctx.fmtMoney(s.outstanding)}</div><div class="stat-label">المتبقي</div></div>
+            <div class="stat-card"><div class="stat-value" style="color:${s.trustBalance >= 0 ? '#16a34a' : '#dc2626'}">${ctx.fmtMoney(s.trustBalance)}</div><div class="stat-label">رصيد الأمانة</div></div>
+          </div>
+
+          <div class="tabs" id="cdTabs">
+            <button class="tab active" data-tab="timeline">السجل الزمني</button>
+            <button class="tab" data-tab="cases">القضايا (${s.cases})</button>
+            <button class="tab" data-tab="hearings">الجلسات</button>
+            <button class="tab" data-tab="documents">المستندات (${s.documents})</button>
+            <button class="tab" data-tab="contracts">العقود (${s.contracts})</button>
+            <button class="tab" data-tab="invoices">الفواتير</button>
+            <button class="tab" data-tab="payments">الدفعات</button>
+            <button class="tab" data-tab="trust">الأمانات</button>
+            <button class="tab" data-tab="notes">الملاحظات</button>
+          </div>
+
+          <div id="cdPanel"><div class="empty-state">جارِ التحميل...</div></div>
+        `;
+
+        const tabsEl = root.querySelector('#cdTabs');
+        const panel = root.querySelector('#cdPanel');
+
+        const KIND_LABEL = {
+          case_opened: 'قضية', hearing: 'جلسة', document: 'مستند',
+          contract_created: 'عقد (إنشاء)', contract_signed: 'عقد (توقيع)',
+          invoice: 'فاتورة', payment: 'دفعة',
+          trust_deposit: 'إيداع أمانة', trust_withdrawal: 'سحب أمانة',
+          trust_fee: 'رسوم أمانة', trust_refund: 'استرجاع أمانة', trust_adjustment: 'تسوية أمانة',
+          note: 'ملاحظة', deadline: 'موعد', task: 'مهمة'
+        };
+        const KIND_GROUPS = [
+          { key: 'all',      label: 'الكل' },
+          { key: 'cases',    label: 'قضايا وجلسات', kinds: ['case_opened', 'hearing', 'deadline'] },
+          { key: 'money',    label: 'مالية', kinds: ['invoice', 'payment', 'trust_deposit', 'trust_withdrawal', 'trust_fee', 'trust_refund', 'trust_adjustment'] },
+          { key: 'docs',     label: 'مستندات وعقود', kinds: ['document', 'contract_created', 'contract_signed'] },
+          { key: 'other',    label: 'ملاحظات ومهام', kinds: ['note', 'task'] }
+        ];
+
+        function statusBadge(s) {
+          if (!s) return '';
+          const labels = { active: 'نشطة', pending: 'معلقة', closed: 'مغلقة', scheduled: 'مجدولة',
+            completed: 'مكتملة', cancelled: 'ملغاة', postponed: 'مؤجلة', draft: 'مسودة',
+            sent: 'مرسلة', paid: 'مدفوعة', overdue: 'متأخرة', signed: 'موقع',
+            pending_signature: 'بانتظار التوقيع', open: 'مفتوح', missed: 'فائت' };
+          return `<span class="badge ${ctx.esc(s)}">${ctx.esc(labels[s] || s)}</span>`;
+        }
+
+        function renderTimelineItem(e) {
+          const parts = [];
+          if (e.meta) {
+            const m = e.meta;
+            if (m.status) parts.push(statusBadge(m.status));
+            if (m.case_type) parts.push(ctx.esc(m.case_type));
+            if (m.document_type) parts.push(ctx.esc(m.document_type));
+            if (m.contract_type) parts.push(ctx.esc(m.contract_type));
+            if (m.court_name) parts.push('🏛 ' + ctx.esc(m.court_name));
+            if (m.payment_method) parts.push(ctx.esc(m.payment_method));
+            if (m.reference_number) parts.push('مرجع: ' + ctx.esc(m.reference_number));
+            if (m.file_name) parts.push('📎 ' + ctx.esc(m.file_name));
+            if (m.priority) parts.push(`<span class="badge ${ctx.esc(m.priority)}">${ctx.esc(m.priority)}</span>`);
+            if (m.category) parts.push(ctx.esc(m.category));
+            if (m.description) parts.push(ctx.esc(m.description));
+          }
+          let amount = '';
+          if (e.kind === 'payment' || e.kind === 'trust_deposit' || e.kind === 'trust_refund') {
+            amount = `<div style="color:#16a34a;font-weight:700">+ ${ctx.fmtMoney(e.meta.amount, e.meta.currency)}</div>`;
+          } else if (e.kind === 'trust_withdrawal' || e.kind === 'trust_fee') {
+            amount = `<div style="color:#dc2626;font-weight:700">− ${ctx.fmtMoney(e.meta.amount, e.meta.currency)}</div>`;
+          } else if (e.kind === 'trust_adjustment') {
+            amount = `<div style="color:#7c3aed;font-weight:700">${ctx.fmtMoney(e.meta.amount, e.meta.currency)}</div>`;
+          } else if (e.kind === 'invoice') {
+            const paid = Number(e.meta.paid_amount || 0), tot = Number(e.meta.total_amount || 0);
+            amount = `<div>الإجمالي: <strong>${ctx.fmtMoney(tot, e.meta.currency)}</strong> | المدفوع: <strong style="color:#16a34a">${ctx.fmtMoney(paid, e.meta.currency)}</strong>${tot - paid > 0 ? ` | متبقي: <strong style="color:#dc2626">${ctx.fmtMoney(tot - paid, e.meta.currency)}</strong>` : ''}</div>`;
+          } else if (e.kind === 'contract_created' && e.meta.value) {
+            amount = `<div>القيمة: <strong>${ctx.fmtMoney(e.meta.value, e.meta.currency)}</strong></div>`;
+          }
+          return `
+            <div class="tl-item">
+              <div class="tl-dot ${ctx.esc(e.kind)}"></div>
+              <div class="tl-card ${ctx.esc(e.kind)}">
+                <div class="tl-title">${ctx.esc(e.title)}</div>
+                <div class="tl-time">${ctx.fmtDateSmart(e.ts)} • <span style="opacity:.7">${ctx.esc(KIND_LABEL[e.kind] || e.kind)}</span></div>
+                ${amount}
+                ${parts.length ? `<div class="tl-meta">${parts.join('<span style="opacity:.4">•</span>')}</div>` : ''}
+              </div>
+            </div>`;
+        }
+
+        async function renderTimeline() {
+          panel.innerHTML = `
+            <div class="tl-filter">${KIND_GROUPS.map((g, i) => `<button class="chip ${i === 0 ? 'active' : ''}" data-group="${g.key}">${g.label}</button>`).join('')}</div>
+            <div class="card"><div id="tlList"><div class="empty-state">جارِ التحميل...</div></div></div>`;
+          const { data: events } = await ctx.api(`/clients/${id}/timeline`, { params: { limit: 300 } });
+          const listEl = panel.querySelector('#tlList');
+          let activeGroup = 'all';
+          function draw() {
+            const filter = KIND_GROUPS.find((g) => g.key === activeGroup);
+            const filtered = !filter || !filter.kinds ? events : events.filter((e) => filter.kinds.includes(e.kind));
+            if (!filtered.length) { listEl.innerHTML = `<div class="empty-state">لا توجد أحداث</div>`; return; }
+            listEl.innerHTML = `<div class="timeline">${filtered.map(renderTimelineItem).join('')}</div>`;
+          }
+          panel.querySelectorAll('.chip').forEach((chip) => {
+            chip.addEventListener('click', () => {
+              panel.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+              chip.classList.add('active');
+              activeGroup = chip.dataset.group;
+              draw();
+            });
+          });
+          draw();
+        }
+
+        async function renderTable(resource, cols, emptyMsg) {
+          panel.innerHTML = `<div class="card"><div class="table-wrap"><table class="data"><thead><tr>${cols.map(c => `<th>${ctx.esc(c.label)}</th>`).join('')}</tr></thead><tbody><tr><td class="empty" colspan="${cols.length}">جارِ التحميل...</td></tr></tbody></table></div></div>`;
+          const tbody = panel.querySelector('tbody');
+          try {
+            const { data } = await ctx.api(resource);
+            if (!data.length) { tbody.innerHTML = `<tr><td class="empty" colspan="${cols.length}">${ctx.esc(emptyMsg)}</td></tr>`; return; }
+            tbody.innerHTML = data.map((row) => `<tr>${cols.map(c => `<td>${c.render ? c.render(row) : ctx.esc(row[c.key])}</td>`).join('')}</tr>`).join('');
+          } catch (err) {
+            tbody.innerHTML = `<tr><td class="empty" colspan="${cols.length}">${ctx.esc(err.message)}</td></tr>`;
+          }
+        }
+
+        const TABS = {
+          timeline: renderTimeline,
+          cases: () => renderTable(`/clients/${id}/cases`, [
+            { key: 'case_number', label: 'الرقم', render: (r) => `<a class="btn-link" href="cases.html?focus=${r.id}">${ctx.esc(r.case_number)}</a>` },
+            { key: 'title', label: 'العنوان' },
+            { key: 'case_type', label: 'النوع' },
+            { key: 'status', label: 'الحالة', render: (r) => statusBadge(r.status) },
+            { key: 'filing_date', label: 'تاريخ القيد', render: (r) => ctx.fmtDateSmart(r.filing_date) }
+          ], 'لا توجد قضايا لهذا الموكل'),
+          hearings: async () => {
+            // Hearings aren't direct on client, but we can collect via the cases
+            panel.innerHTML = `<div class="card"><div class="empty-state">جارِ التحميل...</div></div>`;
+            const { data: cases } = await ctx.api(`/clients/${id}/cases`);
+            if (!cases.length) { panel.querySelector('.card').innerHTML = '<div class="empty-state">لا توجد قضايا (وبالتالي لا جلسات)</div>'; return; }
+            const hearingsArr = [];
+            for (const cs of cases) {
+              try {
+                const { data } = await ctx.api(`/cases/${cs.id}/hearings`);
+                data.forEach((h) => hearingsArr.push({ ...h, case_number: cs.case_number, case_title: cs.title }));
+              } catch {}
+            }
+            hearingsArr.sort((a, b) => String(b.scheduled_at).localeCompare(String(a.scheduled_at)));
+            if (!hearingsArr.length) { panel.querySelector('.card').innerHTML = '<div class="empty-state">لا توجد جلسات</div>'; return; }
+            panel.innerHTML = `
+              <div class="card"><div class="table-wrap"><table class="data">
+                <thead><tr><th>القضية</th><th>النوع</th><th>التاريخ</th><th>المحكمة</th><th>الحالة</th></tr></thead>
+                <tbody>${hearingsArr.map((h) => `<tr>
+                  <td><strong>${ctx.esc(h.case_number)}</strong> — ${ctx.esc(h.case_title)}</td>
+                  <td>${ctx.esc(h.hearing_type)}</td>
+                  <td>${ctx.fmtDateTime(h.scheduled_at)}</td>
+                  <td>${ctx.esc(h.court_name || '-')}</td>
+                  <td>${statusBadge(h.status)}</td>
+                </tr>`).join('')}</tbody>
+              </table></div></div>`;
+          },
+          documents: () => renderTable(`/clients/${id}/documents`, [
+            { key: 'title', label: 'العنوان' },
+            { key: 'document_type', label: 'النوع' },
+            { key: 'file_name', label: 'الملف' },
+            { key: 'created_at', label: 'التاريخ', render: (r) => ctx.fmtDateSmart(r.created_at) },
+            { key: '_act', label: '', render: (r) => `<a class="btn-link" target="_blank" href="/api/documents/${r.id}/download">تحميل</a>` }
+          ], 'لا توجد مستندات لهذا الموكل'),
+          contracts: () => renderTable(`/clients/${id}/contracts`, [
+            { key: 'title', label: 'العنوان' },
+            { key: 'contract_type', label: 'النوع' },
+            { key: 'status', label: 'الحالة', render: (r) => statusBadge(r.status) },
+            { key: 'value', label: 'القيمة', render: (r) => r.value ? ctx.fmtMoney(r.value, r.currency) : '-' },
+            { key: 'created_at', label: 'التاريخ', render: (r) => ctx.fmtDateSmart(r.created_at) }
+          ], 'لا توجد عقود لهذا الموكل'),
+          invoices: () => renderTable(`/clients/${id}/billing`, [
+            { key: 'invoice_number', label: 'الرقم' },
+            { key: 'title', label: 'العنوان' },
+            { key: 'total_amount', label: 'الإجمالي', render: (r) => ctx.fmtMoney(r.total_amount, r.currency) },
+            { key: 'paid_amount', label: 'المدفوع', render: (r) => `<span style="color:#16a34a">${ctx.fmtMoney(r.paid_amount, r.currency)}</span>` },
+            { key: 'outstanding', label: 'المتبقي', render: (r) => {
+              const rem = Number(r.total_amount || 0) - Number(r.paid_amount || 0);
+              return `<span style="color:${rem > 0 ? '#dc2626' : 'inherit'}">${ctx.fmtMoney(rem, r.currency)}</span>`;
+            }},
+            { key: 'due_date', label: 'الاستحقاق', render: (r) => ctx.fmtDateSmart(r.due_date) },
+            { key: 'status', label: 'الحالة', render: (r) => statusBadge(r.status) }
+          ], 'لا توجد فواتير'),
+          payments: () => renderTable(`/clients/${id}/payments`, [
+            { key: 'payment_date', label: 'التاريخ', render: (r) => ctx.fmtDateSmart(r.payment_date) },
+            { key: 'invoice_number', label: 'الفاتورة', render: (r) => r.invoice_number ? ctx.esc(r.invoice_number) : '—' },
+            { key: 'amount', label: 'المبلغ', render: (r) => `<strong style="color:#16a34a">${ctx.fmtMoney(r.amount)}</strong>` },
+            { key: 'payment_method', label: 'طريقة الدفع' },
+            { key: 'reference_number', label: 'المرجع' }
+          ], 'لا توجد دفعات'),
+          trust: async () => {
+            panel.innerHTML = `<div class="card"><div class="empty-state">جارِ التحميل...</div></div>`;
+            try {
+              const { data } = await ctx.api(`/clients/${id}/trust`);
+              panel.innerHTML = `
+                <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+                  <div><strong>الرصيد الحالي:</strong></div>
+                  <div style="font-size:1.4rem;font-weight:700;color:${data.balance >= 0 ? '#16a34a' : '#dc2626'}">${ctx.fmtMoney(data.balance)}</div>
+                </div>
+                <div class="card"><div class="table-wrap"><table class="data">
+                  <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الوصف</th><th>المرجع</th></tr></thead>
+                  <tbody>${(data.transactions || []).map((t) => {
+                    const kinds = { deposit: ['إيداع', '+', '#16a34a'], withdrawal: ['سحب', '−', '#dc2626'],
+                      fee: ['رسوم', '−', '#dc2626'], refund: ['استرجاع', '+', '#16a34a'],
+                      adjustment: ['تسوية', '', '#7c3aed'] };
+                    const [label, sign, color] = kinds[t.kind] || [t.kind, '', ''];
+                    return `<tr>
+                      <td>${ctx.fmtDateSmart(t.transaction_date)}</td>
+                      <td>${ctx.esc(label)}</td>
+                      <td style="color:${color};font-weight:700">${sign} ${ctx.fmtMoney(t.amount, t.currency)}</td>
+                      <td>${ctx.esc(t.description || '-')}</td>
+                      <td>${ctx.esc(t.reference_number || '-')}</td>
+                    </tr>`;
+                  }).join('') || `<tr><td class="empty" colspan="5">لا توجد حركات</td></tr>`}</tbody>
+                </table></div></div>`;
+            } catch (err) {
+              panel.querySelector('.card').innerHTML = `<div class="empty-state">${ctx.esc(err.message)}</div>`;
+            }
+          },
+          notes: async () => {
+            panel.innerHTML = `<div class="card"><div class="empty-state">جارِ التحميل...</div></div>`;
+            try {
+              const { data } = await ctx.api('/notes', { params: { client_id: id, limit: 100 } });
+              if (!data.length) { panel.querySelector('.card').innerHTML = '<div class="empty-state">لا توجد ملاحظات</div>'; return; }
+              panel.innerHTML = data.map((n) => `
+                <div class="card">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                    <strong>${ctx.esc(n.title)} ${n.is_pinned ? '📌' : ''}</strong>
+                    <span class="tl-time">${ctx.fmtDateSmart(n.created_at)}</span>
+                  </div>
+                  <div style="margin-top:8px;white-space:pre-wrap">${ctx.esc(n.content)}</div>
+                </div>`).join('');
+            } catch (err) {
+              panel.querySelector('.card').innerHTML = `<div class="empty-state">${ctx.esc(err.message)}</div>`;
+            }
+          }
+        };
+
+        tabsEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('.tab');
+          if (!btn) return;
+          tabsEl.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+          btn.classList.add('active');
+          const fn = TABS[btn.dataset.tab];
+          if (fn) fn();
+        });
+
+        // Initial tab
+        TABS.timeline();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -69,6 +69,50 @@ const paymentsBase = crudRouter({
   beforeCreate: (req, data) => ({ ...data, created_by: req.user.id })
 });
 
+// Keep invoices.paid_amount / status in sync when payments are added/updated/deleted.
+async function recomputeInvoice(invoiceId, firmId) {
+  if (!invoiceId) return;
+  const { run, get } = require('../db');
+  const sum = await get(
+    `SELECT COALESCE(SUM(amount),0) AS paid FROM payments
+     WHERE invoice_id = ? AND firm_id = ? AND deleted_at IS NULL AND status = 'completed'`,
+    [invoiceId, firmId]
+  );
+  const inv = await get(`SELECT total_amount FROM invoices WHERE id = ? AND firm_id = ?`, [invoiceId, firmId]);
+  if (!inv) return;
+  const paid = sum.paid || 0;
+  const status = paid >= inv.total_amount && inv.total_amount > 0 ? 'paid' : (paid > 0 ? 'sent' : undefined);
+  if (status) {
+    await run(
+      `UPDATE invoices SET paid_amount = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND firm_id = ?`,
+      [paid, status, invoiceId, firmId]
+    );
+  } else {
+    await run(
+      `UPDATE invoices SET paid_amount = ?, updated_at = datetime('now') WHERE id = ? AND firm_id = ?`,
+      [paid, invoiceId, firmId]
+    );
+  }
+}
+
+// Wrap the payments router so any create/update/delete refreshes the linked invoice
+const paymentsRouter = express.Router();
+paymentsRouter.use(async (req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const origJson = res.json.bind(res);
+  res.json = async (body) => {
+    try {
+      if (body && body.success && body.data) {
+        const invoiceId = body.data.invoice_id || (req.body && req.body.invoice_id);
+        if (invoiceId) await recomputeInvoice(invoiceId, req.user.firm_id);
+      }
+    } catch (e) { /* non-fatal */ }
+    return origJson(body);
+  };
+  next();
+});
+paymentsRouter.use('/', paymentsBase);
+
 // -------- Expenses --------
 const expensesBase = crudRouter({
   table: 'expenses',
@@ -139,7 +183,7 @@ reportsRouter.get('/client/:clientId', asyncHandler(async (req, res) => {
 }));
 
 router.use('/invoices', invoicesRouter);
-router.use('/payments', paymentsBase);
+router.use('/payments', paymentsRouter);
 router.use('/expenses', expensesBase);
 router.use('/reports', reportsRouter);
 
