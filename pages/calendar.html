@@ -99,6 +99,7 @@
           <div class="page-header">
             <h2 class="page-title">التقويم</h2>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary" id="printBtn">🖨️ طباعة</button>
               <button class="btn btn-secondary" id="exportBtn">⬇ تصدير</button>
               <button class="btn btn-primary" id="addEvt">+ إضافة حدث</button>
             </div>
@@ -357,6 +358,56 @@
 
         root.querySelector('#addEvt').addEventListener('click', () => openAddEvent());
         root.querySelector('#exportBtn').addEventListener('click', () => openExportModal());
+        root.querySelector('#printBtn').addEventListener('click', () => openPrintModal());
+
+        // ---- Quick direct-print (no download): pick range, open printable view,
+        //      auto-fires the browser print dialog. ----
+        function openPrintModal() {
+          // Default to the currently visible month in the calendar.
+          const y = current.getFullYear(), m = current.getMonth();
+          const first = new Date(y, m, 1);
+          const last  = new Date(y, m + 1, 0);
+          ctx.openModal({
+            title: 'طباعة التقويم',
+            contentHTML: `
+              <form id="prtForm" class="form-grid" onsubmit="event.preventDefault()">
+                <div class="form-field"><label>من تاريخ</label><input type="date" name="from" value="${dateKey(first)}" required></div>
+                <div class="form-field"><label>إلى تاريخ</label><input type="date" name="to"   value="${dateKey(last)}"  required></div>
+                <div class="form-field full"><label>تضمين</label>
+                  <div style="display:flex;gap:14px;flex-wrap:wrap;padding-top:4px">
+                    <label style="font-weight:400"><input type="checkbox" name="inc_hearing"  checked> الجلسات</label>
+                    <label style="font-weight:400"><input type="checkbox" name="inc_deadline" checked> المواعيد النهائية</label>
+                    <label style="font-weight:400"><input type="checkbox" name="inc_task"     checked> المهام</label>
+                    <label style="font-weight:400"><input type="checkbox" name="inc_event"    checked> الأحداث</label>
+                  </div>
+                </div>
+              </form>`,
+            okText: '🖨️ طباعة الآن',
+            onOk: async (body) => {
+              const f = body.querySelector('#prtForm');
+              const fromStr = f.from.value, toStr = f.to.value;
+              if (!fromStr || !toStr) { ctx.toast('حدد الفترة', 'error'); return false; }
+              const from = new Date(fromStr + 'T00:00:00');
+              const to   = new Date(toStr + 'T23:59:59');
+              if (to < from) { ctx.toast('تاريخ النهاية قبل البداية', 'error'); return false; }
+              const kinds = {
+                hearing: f.inc_hearing.checked, deadline: f.inc_deadline.checked,
+                task: f.inc_task.checked, event: f.inc_event.checked
+              };
+              try {
+                const items = await collectRange(from, to, kinds);
+                if (!items.length) { ctx.toast('لا توجد بيانات في هذا النطاق', 'warning'); return false; }
+                // Reuse the same report renderer but without the download/save path.
+                const html = renderReportHTML(items, fromStr, toStr);
+                const w = window.open('', '_blank');
+                if (!w) { ctx.toast('يرجى السماح بالنوافذ المنبثقة للطباعة', 'error', 5000); return false; }
+                w.document.open(); w.document.write(html); w.document.close();
+                w.addEventListener('load', () => setTimeout(() => w.print(), 300));
+                return true;
+              } catch (err) { ctx.toast(err.message, 'error'); return false; }
+            }
+          });
+        }
 
         // ---- Export: lets user pick a date range and format, then downloads ----
         function openExportModal() {
