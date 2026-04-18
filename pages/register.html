@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>إنشاء حساب - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    body { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: linear-gradient(135deg, var(--brand), var(--brand-hover)); }
+    .auth-card { background: #fff; padding: 36px; border-radius: 14px; width: 100%; max-width: 520px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .auth-card h1 { color: var(--brand); margin: 0 0 6px; }
+    .auth-card p.sub { color: var(--muted); margin: 0 0 20px; }
+    .auth-card .link { color: var(--brand); text-decoration: underline; }
+    .err { background: #fee2e2; color: #991b1b; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; display: none; }
+    .err.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <h1>إنشاء حساب جديد</h1>
+    <p class="sub">سجل مكتبك القانوني على ميزان. أول مستخدم يكون المسؤول.</p>
+    <div class="err" id="err"></div>
+    <form id="regForm" class="form-grid">
+      <div class="form-field"><label>الاسم الأول *</label><input name="firstName" required></div>
+      <div class="form-field"><label>اسم العائلة *</label><input name="lastName" required></div>
+      <div class="form-field full"><label>اسم المكتب *</label><input name="firmName" required></div>
+      <div class="form-field full"><label>البريد الإلكتروني *</label><input name="email" type="email" required></div>
+      <div class="form-field"><label>كلمة المرور *</label><input name="password" type="password" required minlength="6"></div>
+      <div class="form-field"><label>تأكيد كلمة المرور *</label><input name="confirm" type="password" required minlength="6"></div>
+      <div class="form-field full"><label>الهاتف</label><input name="phone" type="tel"></div>
+      <div class="form-field full"><button class="btn btn-primary" type="submit" style="width:100%;padding:12px">إنشاء الحساب</button></div>
+    </form>
+    <p style="text-align:center;margin-top:16px">لديك حساب؟ <a href="login.html" class="link">تسجيل الدخول</a></p>
+  </div>
+  <script>
+    const form = document.getElementById('regForm');
+    const errEl = document.getElementById('err');
+    function showErr(msg) { errEl.textContent = msg; errEl.classList.add('show'); }
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.classList.remove('show');
+      const f = form.elements;
+      if (f.password.value !== f.confirm.value) return showErr('كلمتا المرور غير متطابقتين');
+      const btn = form.querySelector('button[type=submit]');
+      btn.disabled = true; btn.textContent = 'جارٍ الإنشاء...';
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: f.firstName.value, lastName: f.lastName.value,
+            firmName: f.firmName.value, email: f.email.value,
+            password: f.password.value, phone: f.phone.value || null
+          })
+        });
+        const body = await res.json();
+        if (!res.ok || !body.success) { showErr(body.error || 'فشل إنشاء الحساب'); return; }
+        localStorage.setItem('authToken', body.data.token);
+        localStorage.setItem('user', JSON.stringify(body.data.user));
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        showErr('تعذر الاتصال بالخادم');
+      } finally {
+        btn.disabled = false; btn.textContent = 'إنشاء الحساب';
+      }
+    });
+  </script>
+</body>
+</html>

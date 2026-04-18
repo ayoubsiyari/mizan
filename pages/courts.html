@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المحاكم والقضاة - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; border: none; background: transparent; font: inherit; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'courts',
+      title: 'المحاكم والقضاة',
+      render: async (root, ctx) => {
+        root.innerHTML = `
+          <div class="page-header"><h2 class="page-title">المحاكم والقضاة</h2></div>
+          <div class="tabs">
+            <button class="tab active" data-tab="courts">المحاكم</button>
+            <button class="tab" data-tab="judges">القضاة</button>
+          </div>
+          <div id="tabHost"></div>`;
+
+        const tabs = root.querySelectorAll('.tab');
+        const host = root.querySelector('#tabHost');
+        tabs.forEach(t => t.addEventListener('click', () => {
+          tabs.forEach(x => x.classList.toggle('active', x === t));
+          host.innerHTML = '';
+          (t.dataset.tab === 'courts' ? renderCourts : renderJudges)();
+        }));
+
+        function renderCourts() {
+          CrudPage.render(host, ctx, {
+            resource: '/courts',
+            title: '',
+            addLabel: 'إضافة محكمة',
+            columns: [
+              { key: 'name', label: 'الاسم' },
+              { key: 'court_type', label: 'النوع' },
+              { key: 'city', label: 'المدينة' },
+              { key: 'phone', label: 'الهاتف' },
+              { key: 'email', label: 'البريد' }
+            ],
+            form: [
+              { key: 'name', label: 'اسم المحكمة', type: 'text', required: true },
+              { key: 'court_type', label: 'نوع المحكمة', type: 'text' },
+              { key: 'city', label: 'المدينة', type: 'text' },
+              { key: 'phone', label: 'الهاتف', type: 'tel' },
+              { key: 'email', label: 'البريد', type: 'email' },
+              { key: 'website', label: 'الموقع', type: 'text' },
+              { key: 'address', label: 'العنوان', type: 'textarea', width: 'full' },
+              { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' }
+            ]
+          });
+        }
+
+        async function renderJudges() {
+          const { data: courts } = await ctx.api('/courts', { params: { limit: 200 } });
+          const courtMap = Object.fromEntries(courts.map(c => [c.id, c.name]));
+          CrudPage.render(host, ctx, {
+            resource: '/judges',
+            title: '',
+            addLabel: 'إضافة قاضي',
+            columns: [
+              { key: 'name', label: 'الاسم' },
+              { key: 'title', label: 'اللقب' },
+              { key: 'court_id', label: 'المحكمة', render: (r) => courtMap[r.court_id] || '—' },
+              { key: 'specialization', label: 'التخصص' },
+              { key: 'phone', label: 'الهاتف' }
+            ],
+            form: [
+              { key: 'name', label: 'الاسم', type: 'text', required: true },
+              { key: 'title', label: 'اللقب', type: 'text' },
+              { key: 'court_id', label: 'المحكمة', type: 'select',
+                options: [{ value: '', label: '--' }, ...courts.map(c => ({ value: c.id, label: c.name }))] },
+              { key: 'specialization', label: 'التخصص', type: 'text' },
+              { key: 'phone', label: 'الهاتف', type: 'tel' },
+              { key: 'email', label: 'البريد', type: 'email' },
+              { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' }
+            ]
+          });
+        }
+
+        renderCourts();
+      }
+    });
+  </script>
+</body>
+</html>

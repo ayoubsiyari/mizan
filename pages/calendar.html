@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>التقويم - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: #e5e7eb; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+    .cal-weekday { background: #f9fafb; padding: 10px; text-align: center; font-weight: 700; color: var(--muted); }
+    .cal-day { background: #fff; min-height: 100px; padding: 8px; position: relative; cursor: pointer; transition: background .1s; }
+    .cal-day:hover { background: #f9fafb; }
+    .cal-day.dim { background: #fafafa; color: var(--muted); }
+    .cal-day .num { font-weight: 700; font-size: .9rem; }
+    .cal-day.today .num { color: var(--brand); background: var(--gold); border-radius: 999px; width: 26px; height: 26px; display: grid; place-items: center; }
+    .cal-event { background: var(--brand); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: .75rem; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-event.hearing { background: var(--warning); }
+    .cal-event.deadline { background: var(--danger); }
+    .cal-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+    .cal-toolbar h3 { margin: 0 auto; color: var(--brand); }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'calendar',
+      title: 'التقويم',
+      render: async (root, ctx) => {
+        let current = new Date();
+        const WEEKDAYS = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+        const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+        root.innerHTML = `
+          <div class="page-header">
+            <h2 class="page-title">التقويم</h2>
+            <button class="btn btn-primary" id="addEvt">+ إضافة حدث</button>
+          </div>
+          <div class="card" id="calHost"></div>`;
+
+        async function draw() {
+          const y = current.getFullYear(), m = current.getMonth();
+          const first = new Date(y, m, 1);
+          const startDow = first.getDay();
+          const daysInMonth = new Date(y, m + 1, 0).getDate();
+          const daysInPrev = new Date(y, m, 0).getDate();
+
+          // Fetch events for this month
+          const { data: events = [] } = await ctx.api('/calendar/month', { params: { year: y, month: m + 1 } });
+          const { data: hearings = [] } = await ctx.api('/hearings', { params: { limit: 500 } });
+          const hearingEvents = hearings.filter(h => {
+            const d = new Date(h.scheduled_at);
+            return d.getFullYear() === y && d.getMonth() === m;
+          });
+
+          const byDay = {};
+          events.forEach((ev) => {
+            const d = new Date(ev.start_time);
+            const key = d.getDate();
+            (byDay[key] = byDay[key] || []).push({ kind: ev.event_type || 'event', title: ev.title, id: ev.id });
+          });
+          hearingEvents.forEach((h) => {
+            const d = new Date(h.scheduled_at);
+            const key = d.getDate();
+            (byDay[key] = byDay[key] || []).push({ kind: 'hearing', title: h.title || 'جلسة: ' + (h.court_name || ''), id: h.id });
+          });
+
+          const cells = [];
+          for (let i = 0; i < startDow; i++) {
+            const d = daysInPrev - (startDow - i - 1);
+            cells.push({ day: d, dim: true });
+          }
+          for (let i = 1; i <= daysInMonth; i++) cells.push({ day: i });
+          while (cells.length % 7 !== 0) cells.push({ day: cells.length - startDow - daysInMonth + 1, dim: true });
+
+          const today = new Date();
+          const isToday = (i) => today.getFullYear() === y && today.getMonth() === m && today.getDate() === i;
+
+          const host = root.querySelector('#calHost');
+          host.innerHTML = `
+            <div class="cal-toolbar">
+              <button class="btn btn-secondary btn-sm" id="prevM">◀ السابق</button>
+              <button class="btn btn-secondary btn-sm" id="today">اليوم</button>
+              <button class="btn btn-secondary btn-sm" id="nextM">التالي ▶</button>
+              <h3>${MONTHS[m]} ${y}</h3>
+            </div>
+            <div class="cal-grid">
+              ${WEEKDAYS.map(d => `<div class="cal-weekday">${d}</div>`).join('')}
+              ${cells.map(c => `
+                <div class="cal-day ${c.dim ? 'dim' : ''} ${!c.dim && isToday(c.day) ? 'today' : ''}" data-day="${!c.dim ? c.day : ''}">
+                  <span class="num">${c.day}</span>
+                  ${!c.dim && byDay[c.day] ? byDay[c.day].slice(0, 3).map(ev => `<div class="cal-event ${ev.kind}" title="${ctx.esc(ev.title)}">${ctx.esc(ev.title)}</div>`).join('') : ''}
+                  ${!c.dim && byDay[c.day] && byDay[c.day].length > 3 ? `<div class="cal-event">+${byDay[c.day].length - 3}</div>` : ''}
+                </div>`).join('')}
+            </div>`;
+          host.querySelector('#prevM').onclick = () => { current = new Date(y, m - 1, 1); draw(); };
+          host.querySelector('#nextM').onclick = () => { current = new Date(y, m + 1, 1); draw(); };
+          host.querySelector('#today').onclick = () => { current = new Date(); draw(); };
+        }
+
+        root.querySelector('#addEvt').addEventListener('click', async () => {
+          const [{ data: cases }, { data: clients }] = await Promise.all([
+            ctx.api('/cases', { params: { limit: 200 } }),
+            ctx.api('/clients', { params: { limit: 200 } })
+          ]);
+          ctx.openModal({
+            title: 'إضافة حدث',
+            contentHTML: `
+              <form id="evtForm" class="form-grid" onsubmit="event.preventDefault()">
+                <div class="form-field full"><label>العنوان *</label><input name="title" required></div>
+                <div class="form-field"><label>النوع *</label>
+                  <select name="event_type" required>
+                    <option value="meeting">اجتماع</option>
+                    <option value="deadline">موعد نهائي</option>
+                    <option value="reminder">تذكير</option>
+                    <option value="task">مهمة</option>
+                    <option value="other">أخرى</option>
+                  </select>
+                </div>
+                <div class="form-field"><label>البدء *</label><input name="start_time" type="datetime-local" required></div>
+                <div class="form-field"><label>الانتهاء *</label><input name="end_time" type="datetime-local" required></div>
+                <div class="form-field"><label>المكان</label><input name="location"></div>
+                <div class="form-field"><label>القضية</label>
+                  <select name="case_id"><option value="">--</option>${cases.map(c => `<option value="${c.id}">${c.case_number} - ${c.title}</option>`).join('')}</select>
+                </div>
+                <div class="form-field"><label>الموكل</label>
+                  <select name="client_id"><option value="">--</option>${clients.map(c => `<option value="${c.id}">${c.first_name} ${c.last_name}</option>`).join('')}</select>
+                </div>
+                <div class="form-field full"><label>الوصف</label><textarea name="description"></textarea></div>
+              </form>`,
+            onOk: async (body) => {
+              const f = body.querySelector('#evtForm');
+              const payload = {
+                title: f.title.value,
+                event_type: f.event_type.value,
+                start_time: new Date(f.start_time.value).toISOString(),
+                end_time: new Date(f.end_time.value).toISOString(),
+                location: f.location.value || null,
+                case_id: f.case_id.value || null,
+                client_id: f.client_id.value || null,
+                description: f.description.value || null
+              };
+              try { await ctx.api('/calendar', { method: 'POST', body: payload }); ctx.toast('تمت الإضافة', 'success'); draw(); return true; }
+              catch (e) { ctx.toast(e.message, 'error'); return false; }
+            }
+          });
+        });
+
+        draw();
+      }
+    });
+  </script>
+</body>
+</html>

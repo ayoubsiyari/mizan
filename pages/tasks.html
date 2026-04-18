@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المهام - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const STATUS = [
+      { value: 'pending', label: 'قيد الانتظار' },
+      { value: 'in_progress', label: 'قيد التنفيذ' },
+      { value: 'completed', label: 'مكتملة' },
+      { value: 'cancelled', label: 'ملغاة' }
+    ];
+    const PRIORITY = [
+      { value: 'low', label: 'منخفضة' }, { value: 'medium', label: 'متوسطة' },
+      { value: 'high', label: 'عالية' }, { value: 'urgent', label: 'عاجلة' }
+    ];
+
+    AppShell.mount({
+      page: 'tasks',
+      title: 'المهام',
+      render: async (root, ctx) => {
+        CrudPage.render(root, ctx, {
+          resource: '/tasks',
+          title: 'إدارة المهام',
+          addLabel: 'إضافة مهمة',
+          stats: async () => {
+            const [all, pending, completed] = await Promise.all([
+              ctx.api('/tasks', { params: { limit: 1 } }),
+              ctx.api('/tasks', { params: { limit: 1, status: 'pending' } }),
+              ctx.api('/tasks', { params: { limit: 1, status: 'completed' } })
+            ]);
+            return [
+              { value: all.pagination.total, label: 'الإجمالي' },
+              { value: pending.pagination.total, label: 'قيد الانتظار' },
+              { value: completed.pagination.total, label: 'مكتملة' }
+            ];
+          },
+          filters: [
+            { key: 'status', type: 'select', label: 'الحالة', options: STATUS },
+            { key: 'priority', type: 'select', label: 'الأولوية', options: PRIORITY }
+          ],
+          columns: [
+            { key: 'title', label: 'المهمة' },
+            { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(STATUS.find(s => s.value === r.status) || {}).label || r.status}</span>` },
+            { key: 'priority', label: 'الأولوية', render: (r) => `<span class="badge ${r.priority}">${(PRIORITY.find(p => p.value === r.priority) || {}).label || r.priority}</span>` },
+            { key: 'due_date', label: 'تاريخ الاستحقاق', render: (r) => ctx.fmtDateTime(r.due_date) },
+            { key: 'completion_percentage', label: 'الإنجاز %', render: (r) => `${r.completion_percentage || 0}%` }
+          ],
+          rowActions: [
+            { label: 'إكمال', onClick: async (row) => {
+              try { await ctx.api(`/tasks/${row.id}/status`, { method: 'PATCH', body: { status: 'completed' } }); ctx.toast('تم إكمال المهمة', 'success'); location.reload(); }
+              catch (e) { ctx.toast(e.message, 'error'); }
+            }}
+          ],
+          form: async () => {
+            const [{ data: cases }, { data: clients }, { data: users }] = await Promise.all([
+              ctx.api('/cases', { params: { limit: 200 } }),
+              ctx.api('/clients', { params: { limit: 200 } }),
+              ctx.api('/settings/users').catch(() => ({ data: [] }))
+            ]);
+            return [
+              { key: 'title', label: 'عنوان المهمة', type: 'text', required: true, width: 'full' },
+              { key: 'status', label: 'الحالة', type: 'select', options: STATUS },
+              { key: 'priority', label: 'الأولوية', type: 'select', options: PRIORITY },
+              { key: 'due_date', label: 'تاريخ الاستحقاق', type: 'datetime-local' },
+              { key: 'assigned_to', label: 'مسندة إلى', type: 'select', options: [{ value: '', label: '--' }, ...users.map(u => ({ value: u.id, label: `${u.first_name} ${u.last_name}` }))] },
+              { key: 'case_id', label: 'القضية', type: 'select', options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+              { key: 'client_id', label: 'الموكل', type: 'select', options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+              { key: 'estimated_hours', label: 'ساعات مقدرة', type: 'number' },
+              { key: 'completion_percentage', label: 'نسبة الإنجاز %', type: 'number' },
+              { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' }
+            ];
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

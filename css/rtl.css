@@ -1,0 +1,402 @@
+/* RTL (Right-to-Left) Support */
+
+/* Base RTL Overrides */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Margins and Padding */
+[dir="rtl"] .ml-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+[dir="rtl"] .mr-auto {
+  margin-right: 0;
+  margin-left: auto;
+}
+
+[dir="rtl"] .ml-1 { margin-left: 0; margin-right: var(--spacing-xs); }
+[dir="rtl"] .ml-2 { margin-left: 0; margin-right: var(--spacing-sm); }
+[dir="rtl"] .ml-3 { margin-left: 0; margin-right: var(--spacing-md); }
+[dir="rtl"] .ml-4 { margin-left: 0; margin-right: var(--spacing-lg); }
+
+[dir="rtl"] .mr-1 { margin-right: 0; margin-left: var(--spacing-xs); }
+[dir="rtl"] .mr-2 { margin-right: 0; margin-left: var(--spacing-sm); }
+[dir="rtl"] .mr-3 { margin-right: 0; margin-left: var(--spacing-md); }
+[dir="rtl"] .mr-4 { margin-right: 0; margin-left: var(--spacing-lg); }
+
+[dir="rtl"] .pl-1 { padding-left: 0; padding-right: var(--spacing-xs); }
+[dir="rtl"] .pl-2 { padding-left: 0; padding-right: var(--spacing-sm); }
+[dir="rtl"] .pl-3 { padding-left: 0; padding-right: var(--spacing-md); }
+[dir="rtl"] .pl-4 { padding-left: 0; padding-right: var(--spacing-lg); }
+
+[dir="rtl"] .pr-1 { padding-right: 0; padding-left: var(--spacing-xs); }
+[dir="rtl"] .pr-2 { padding-right: 0; padding-left: var(--spacing-sm); }
+[dir="rtl"] .pr-3 { padding-right: 0; padding-left: var(--spacing-md); }
+[dir="rtl"] .pr-4 { padding-right: 0; padding-left: var(--spacing-lg); }
+
+/* Floats */
+[dir="rtl"] .float-left {
+  float: right;
+}
+
+[dir="rtl"] .float-right {
+  float: left;
+}
+
+/* Text Alignment */
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+
+[dir="rtl"] .text-right {
+  text-align: left;
+}
+
+/* Flexbox RTL */
+[dir="rtl"] .flex-row-reverse {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .justify-start {
+  justify-content: flex-end;
+}
+
+[dir="rtl"] .justify-end {
+  justify-content: flex-start;
+}
+
+/* Grid RTL */
+[dir="rtl"] .grid {
+  direction: rtl;
+}
+
+/* Forms RTL */
+[dir="rtl"] .form-input,
+[dir="rtl"] .form-select,
+[dir="rtl"] .form-textarea {
+  text-align: right;
+}
+
+[dir="rtl"] .form-checkbox,
+[dir="rtl"] .form-radio {
+  margin-left: 0;
+  margin-right: var(--spacing-sm);
+}
+
+[dir="rtl"] .checkbox-group label,
+[dir="rtl"] .radio-group label {
+  margin-left: var(--spacing-sm);
+  margin-right: 0;
+}
+
+/* Tables RTL */
+[dir="rtl"] .table th,
+[dir="rtl"] .table td {
+  text-align: right;
+}
+
+[dir="rtl"] .table th:first-child,
+[dir="rtl"] .table td:first-child {
+  border-right: none;
+  border-left: 1px solid var(--gray-200);
+}
+
+[dir="rtl"] .table th:last-child,
+[dir="rtl"] .table td:last-child {
+  border-left: none;
+  border-right: 1px solid var(--gray-200);
+}
+
+/* Navigation RTL */
+[dir="rtl"] .nav-link {
+  text-align: right;
+}
+
+[dir="rtl"] .nav-badge {
+  margin-right: 0;
+  margin-left: auto;
+}
+
+/* Sidebar RTL */
+[dir="rtl"] .app-sidebar {
+  border-left: 1px solid var(--gray-200);
+  border-right: none;
+}
+
+[dir="rtl"] .app-sidebar.mobile {
+  right: -280px;
+  left: auto;
+}
+
+[dir="rtl"] .app-sidebar.mobile.open {
+  right: 0;
+  left: auto;
+}
+
+/* Header RTL */
+[dir="rtl"] .header-user {
+  text-align: right;
+}
+
+[dir="rtl"] .user-info {
+  text-align: right;
+}
+
+/* Cards RTL */
+[dir="rtl"] .card {
+  text-align: right;
+}
+
+[dir="rtl"] .card-header {
+  text-align: right;
+}
+
+/* Buttons RTL */
+[dir="rtl"] .btn {
+  text-align: center;
+}
+
+[dir="rtl"] .btn-group .btn:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  border-right: 1px solid;
+  border-left: none;
+}
+
+[dir="rtl"] .btn-group .btn:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border-left: 1px solid;
+  border-right: none;
+}
+
+/* Modals RTL */
+[dir="rtl"] .modal-header {
+  text-align: right;
+}
+
+[dir="rtl"] .modal-footer {
+  text-align: right;
+}
+
+[dir="rtl"] .modal-footer-left {
+  order: 2;
+}
+
+[dir="rtl"] .modal-footer-right {
+  order: 1;
+  margin-right: 0;
+  margin-left: auto;
+}
+
+/* Drawer RTL */
+[dir="rtl"] .drawer-modal {
+  right: 0;
+  left: auto;
+}
+
+[dir="rtl"] .drawer-modal.left {
+  left: 0;
+  right: auto;
+}
+
+/* Tooltips RTL */
+[dir="rtl"] .tooltip::before {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+[dir="rtl"] .tooltip::after {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Dropdowns RTL */
+[dir="rtl"] .dropdown-menu {
+  right: 0;
+  left: auto;
+  text-align: right;
+}
+
+[dir="rtl"] .dropdown-item {
+  text-align: right;
+}
+
+/* Breadcrumbs RTL */
+[dir="rtl"] .breadcrumb {
+  text-align: right;
+}
+
+[dir="rtl"] .breadcrumb-item + .breadcrumb-item::before {
+  content: "";
+  margin-right: 0;
+  margin-left: var(--spacing-sm);
+}
+
+[dir="rtl"] .breadcrumb-item + .breadcrumb-item::after {
+  content: "/";
+  margin-right: var(--spacing-sm);
+  margin-left: 0;
+}
+
+/* Pagination RTL */
+[dir="rtl"] .pagination {
+  text-align: right;
+}
+
+[dir="rtl"] .page-item:first-child .page-link {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+[dir="rtl"] .page-item:last-child .page-link {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+/* Tabs RTL */
+[dir="rtl"] .nav-tabs {
+  text-align: right;
+}
+
+[dir="rtl"] .nav-tabs .nav-link {
+  text-align: right;
+}
+
+/* Progress RTL */
+[dir="rtl"] .progress-bar {
+  text-align: right;
+}
+
+/* Alerts RTL */
+[dir="rtl"] .alert {
+  text-align: right;
+}
+
+[dir="rtl"] .alert-dismissible .close {
+  left: var(--spacing-md);
+  right: auto;
+}
+
+/* List Groups RTL */
+[dir="rtl"] .list-group-item {
+  text-align: right;
+}
+
+/* Media RTL */
+[dir="rtl"] .media {
+  text-align: right;
+}
+
+[dir="rtl"] .media-body {
+  text-align: right;
+}
+
+/* Carousel RTL */
+[dir="rtl"] .carousel-control-prev {
+  right: 0;
+  left: auto;
+}
+
+[dir="rtl"] .carousel-control-next {
+  left: 0;
+  right: auto;
+}
+
+/* Accordion RTL */
+[dir="rtl"] .accordion-button {
+  text-align: right;
+}
+
+[dir="rtl"] .accordion-button::after {
+  left: var(--spacing-md);
+  right: auto;
+}
+
+/* Input Groups RTL */
+[dir="rtl"] .input-group .form-control:first-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+[dir="rtl"] .input-group .form-control:last-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+[dir="rtl"] .input-group-prepend {
+  margin-right: 0;
+  margin-left: -1px;
+}
+
+[dir="rtl"] .input-group-append {
+  margin-left: 0;
+  margin-right: -1px;
+}
+
+/* Custom RTL Components */
+[dir="rtl"] .sidebar-nav {
+  text-align: right;
+}
+
+[dir="rtl"] .nav-icon {
+  margin-left: var(--spacing-md);
+  margin-right: 0;
+}
+
+[dir="rtl"] .stat-card {
+  text-align: right;
+}
+
+[dir="rtl"] .activity-item {
+  text-align: right;
+}
+
+[dir="rtl"] .calendar-weekdays {
+  text-align: right;
+}
+
+[dir="rtl"] .calendar-day {
+  text-align: right;
+}
+
+[dir="rtl"] .event-details-content {
+  text-align: right;
+}
+
+/* RTL Fixes for Third-party Libraries */
+[dir="rtl"] .select2-container--default .select2-selection--single {
+  text-align: right;
+}
+
+[dir="rtl"] .select2-container--default .select2-selection--single .select2-selection__arrow {
+  left: var(--spacing-sm);
+  right: auto;
+}
+
+[dir="rtl"] .datepicker {
+  direction: rtl;
+}
+
+[dir="rtl"] .daterangepicker {
+  direction: rtl;
+}
+
+[dir="rtl"] .fc {
+  direction: rtl;
+}
+
+[dir="rtl"] .fc .fc-daygrid-day {
+  text-align: right;
+}
+
+/* RTL Print Styles */
+@media print {
+  [dir="rtl"] {
+    direction: rtl;
+  }
+  
+  [dir="rtl"] * {
+    direction: rtl;
+    text-align: right;
+  }
+}

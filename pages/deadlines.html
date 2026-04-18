@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المواعيد النهائية - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const STATUS = [
+      { value: 'open', label: 'مفتوح' },
+      { value: 'completed', label: 'مكتمل' },
+      { value: 'missed', label: 'فائت' },
+      { value: 'cancelled', label: 'ملغى' }
+    ];
+    const PRIORITY = [
+      { value: 'low', label: 'منخفضة' }, { value: 'medium', label: 'متوسطة' },
+      { value: 'high', label: 'عالية' }, { value: 'urgent', label: 'عاجلة' }
+    ];
+
+    AppShell.mount({
+      page: 'deadlines',
+      title: 'المواعيد النهائية',
+      render: async (root, ctx) => {
+        CrudPage.render(root, ctx, {
+          resource: '/deadlines',
+          title: 'المواعيد والآجال القانونية',
+          addLabel: 'إضافة موعد نهائي',
+          stats: async () => {
+            const [all, up, over] = await Promise.all([
+              ctx.api('/deadlines', { params: { limit: 1, status: 'open' } }),
+              ctx.api('/deadlines/upcoming', { params: { days: 7 } }),
+              ctx.api('/deadlines/overdue')
+            ]);
+            return [
+              { value: all.pagination.total, label: 'مفتوحة' },
+              { value: (up.data || []).length, label: 'خلال 7 أيام' },
+              { value: (over.data || []).length, label: 'فائتة' }
+            ];
+          },
+          filters: [
+            { key: 'status', type: 'select', label: 'الحالة', options: STATUS },
+            { key: 'priority', type: 'select', label: 'الأولوية', options: PRIORITY }
+          ],
+          columns: [
+            { key: 'title', label: 'الموعد' },
+            { key: 'due_at', label: 'تاريخ الاستحقاق', render: (r) => {
+              const d = new Date(r.due_at.replace(' ', 'T') + (r.due_at.includes('Z') ? '' : 'Z'));
+              const days = Math.ceil((d - Date.now()) / 86400000);
+              const label = ctx.fmtDateSmart(r.due_at);
+              if (r.status !== 'open') return label;
+              if (days < 0) return `<span class="badge overdue">${label} (فائت ${-days}ي)</span>`;
+              if (days <= 3) return `<span class="badge urgent">${label} (بعد ${days}ي)</span>`;
+              if (days <= 7) return `<span class="badge pending">${label} (بعد ${days}ي)</span>`;
+              return label;
+            }},
+            { key: 'priority', label: 'الأولوية', render: (r) => `<span class="badge ${r.priority}">${(PRIORITY.find(p => p.value === r.priority) || {}).label}</span>` },
+            { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(STATUS.find(s => s.value === r.status) || {}).label}</span>` }
+          ],
+          rowActions: [
+            { label: 'إكمال', onClick: async (row) => {
+              try { await ctx.api(`/deadlines/${row.id}/complete`, { method: 'PATCH' }); ctx.toast('تم', 'success'); location.reload(); }
+              catch (e) { ctx.toast(e.message, 'error'); }
+            }}
+          ],
+          form: async () => {
+            const [{ data: cases }, { data: clients }, { data: users }] = await Promise.all([
+              ctx.api('/cases', { params: { limit: 200 } }),
+              ctx.api('/clients', { params: { limit: 200 } }),
+              ctx.api('/settings/users').catch(() => ({ data: [] }))
+            ]);
+            return [
+              { key: 'title', label: 'العنوان', type: 'text', required: true, width: 'full' },
+              { key: 'due_at', label: 'موعد الاستحقاق', type: 'datetime-local', required: true },
+              { key: 'priority', label: 'الأولوية', type: 'select', options: PRIORITY },
+              { key: 'status', label: 'الحالة', type: 'select', options: STATUS },
+              { key: 'case_id', label: 'القضية', type: 'select',
+                options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+              { key: 'client_id', label: 'الموكل', type: 'select',
+                options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+              { key: 'assigned_to', label: 'مسؤول', type: 'select',
+                options: [{ value: '', label: '--' }, ...users.map(u => ({ value: u.id, label: `${u.first_name} ${u.last_name}` }))] },
+              { key: 'reminder_days', label: 'أيام التذكير (JSON)', type: 'text' },
+              { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' }
+            ];
+          },
+          onBeforeSubmit: (data) => {
+            if (data.reminder_days && typeof data.reminder_days === 'string') {
+              // Ensure it's valid JSON array; normalise
+              try { JSON.parse(data.reminder_days); } catch { data.reminder_days = '[7,3,1]'; }
+            }
+            return data;
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

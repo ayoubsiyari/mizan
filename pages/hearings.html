@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الجلسات - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const TYPES = [
+      { value: 'initial', label: 'افتتاحية' }, { value: 'follow_up', label: 'متابعة' },
+      { value: 'evidence', label: 'تقديم أدلة' }, { value: 'judgment', label: 'نطق بالحكم' },
+      { value: 'other', label: 'أخرى' }
+    ];
+    const STATUS = [
+      { value: 'scheduled', label: 'مجدولة' }, { value: 'completed', label: 'مكتملة' },
+      { value: 'cancelled', label: 'ملغاة' }, { value: 'postponed', label: 'مؤجلة' }
+    ];
+
+    AppShell.mount({
+      page: 'hearings',
+      title: 'الجلسات',
+      render: async (root, ctx) => {
+        CrudPage.render(root, ctx, {
+          resource: '/hearings',
+          title: 'جلسات المحاكم',
+          addLabel: 'جدولة جلسة',
+          stats: async () => {
+            const [all, upcoming, today] = await Promise.all([
+              ctx.api('/hearings', { params: { limit: 1 } }),
+              ctx.api('/hearings/upcoming'),
+              ctx.api('/hearings/today')
+            ]);
+            return [
+              { value: all.pagination.total, label: 'إجمالي الجلسات' },
+              { value: (upcoming.data || upcoming).length, label: 'قادمة' },
+              { value: (today.data || today).length, label: 'اليوم' }
+            ];
+          },
+          filters: [
+            { key: 'status', type: 'select', label: 'الحالة', options: STATUS },
+            { key: 'hearing_type', type: 'select', label: 'النوع', options: TYPES }
+          ],
+          columns: [
+            { key: 'title', label: 'العنوان' },
+            { key: 'hearing_type', label: 'النوع', render: (r) => (TYPES.find(t => t.value === r.hearing_type) || {}).label },
+            { key: 'scheduled_at', label: 'موعد الجلسة', render: (r) => ctx.fmtDateTime(r.scheduled_at) },
+            { key: 'court_name', label: 'المحكمة' },
+            { key: 'judge_name', label: 'القاضي' },
+            { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(STATUS.find(s => s.value === r.status) || {}).label}</span>` }
+          ],
+          form: async () => {
+            const { data: cases } = await ctx.api('/cases', { params: { limit: 200 } });
+            return [
+              { key: 'case_id', label: 'القضية', type: 'select', required: true,
+                options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+              { key: 'hearing_type', label: 'النوع', type: 'select', required: true, options: TYPES },
+              { key: 'title', label: 'عنوان الجلسة', type: 'text' },
+              { key: 'scheduled_at', label: 'موعد الجلسة', type: 'datetime-local', required: true },
+              { key: 'duration', label: 'المدة (دقيقة)', type: 'number' },
+              { key: 'status', label: 'الحالة', type: 'select', options: STATUS },
+              { key: 'court_name', label: 'المحكمة', type: 'text' },
+              { key: 'court_room', label: 'القاعة', type: 'text' },
+              { key: 'judge_name', label: 'القاضي', type: 'text' },
+              { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' },
+              { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' },
+              { key: 'outcome', label: 'النتيجة', type: 'textarea', width: 'full' }
+            ];
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

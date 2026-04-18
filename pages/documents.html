@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المستندات - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const DOC_TYPES = [
+      { value: 'contract', label: 'عقد' }, { value: 'evidence', label: 'دليل' },
+      { value: 'court_filing', label: 'مذكرة قضائية' },
+      { value: 'correspondence', label: 'مراسلات' },
+      { value: 'research', label: 'بحث' }, { value: 'other', label: 'أخرى' }
+    ];
+
+    AppShell.mount({
+      page: 'documents',
+      title: 'المستندات',
+      render: async (root, ctx) => {
+        // Custom: add an "Upload" button alongside normal CRUD
+        CrudPage.render(root, ctx, {
+          resource: '/documents',
+          title: 'إدارة المستندات',
+          addLabel: 'رفع مستند',
+          stats: async () => {
+            const all = await ctx.api('/documents', { params: { limit: 1 } });
+            return [{ value: all.pagination.total, label: 'إجمالي المستندات' }];
+          },
+          filters: [{ key: 'document_type', type: 'select', label: 'النوع', options: DOC_TYPES }],
+          columns: [
+            { key: 'title', label: 'العنوان' },
+            { key: 'document_type', label: 'النوع', render: (r) => (DOC_TYPES.find(t => t.value === r.document_type) || {}).label || r.document_type },
+            { key: 'file_name', label: 'الملف' },
+            { key: 'file_size', label: 'الحجم', render: (r) => r.file_size ? `${(r.file_size / 1024).toFixed(1)} KB` : '—' },
+            { key: 'created_at', label: 'تاريخ الرفع', render: (r) => ctx.fmtDate(r.created_at) }
+          ],
+          rowActions: [
+            { label: 'تحميل', onClick: async (row) => {
+              const token = localStorage.getItem('authToken') || '';
+              const res = await fetch(`/api/documents/${row.id}/download`, { headers: { Authorization: 'Bearer ' + token } });
+              if (!res.ok) { ctx.toast('فشل التحميل', 'error'); return; }
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = row.file_name || 'download';
+              document.body.appendChild(a); a.click(); a.remove();
+              URL.revokeObjectURL(url);
+            }}
+          ]
+        });
+
+        // Override the default "add" button behaviour: open upload modal
+        const addBtn = root.querySelector('#crudAddBtn');
+        if (addBtn) {
+          addBtn.replaceWith(addBtn.cloneNode(true));
+          const fresh = root.querySelector('#crudAddBtn');
+          fresh.addEventListener('click', async () => {
+            const [{ data: cases }, { data: clients }] = await Promise.all([
+              ctx.api('/cases', { params: { limit: 200 } }),
+              ctx.api('/clients', { params: { limit: 200 } })
+            ]);
+            ctx.openModal({
+              title: 'رفع مستند',
+              contentHTML: `
+                <form id="uploadForm" class="form-grid" onsubmit="event.preventDefault()">
+                  <div class="form-field full"><label>الملف *</label><input type="file" name="file" required></div>
+                  <div class="form-field full"><label>العنوان *</label><input type="text" name="title" required></div>
+                  <div class="form-field"><label>النوع</label>
+                    <select name="document_type">
+                      ${DOC_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="form-field"><label>التصنيف</label><input type="text" name="category"></div>
+                  <div class="form-field"><label>القضية</label>
+                    <select name="case_id">
+                      <option value="">--</option>
+                      ${cases.map(c => `<option value="${c.id}">${c.case_number} - ${c.title}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="form-field"><label>الموكل</label>
+                    <select name="client_id">
+                      <option value="">--</option>
+                      ${clients.map(c => `<option value="${c.id}">${c.first_name} ${c.last_name}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="form-field full"><label>الوصف</label><textarea name="description"></textarea></div>
+                </form>`,
+              okText: 'رفع',
+              onOk: async (body) => {
+                const form = body.querySelector('#uploadForm');
+                const file = form.file.files[0];
+                if (!file) { ctx.toast('يرجى اختيار ملف', 'error'); return false; }
+                const extra = {
+                  title: form.title.value,
+                  document_type: form.document_type.value,
+                  category: form.category.value,
+                  case_id: form.case_id.value || null,
+                  client_id: form.client_id.value || null,
+                  description: form.description.value
+                };
+                try {
+                  await ctx.apiUpload('/documents/upload', file, extra);
+                  ctx.toast('تم رفع المستند', 'success');
+                  setTimeout(() => location.reload(), 400);
+                  return true;
+                } catch (e) { ctx.toast(e.message, 'error'); return false; }
+              }
+            });
+          });
+        }
+      }
+    });
+  </script>
+</body>
+</html>

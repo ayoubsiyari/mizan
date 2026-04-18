@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الموكلون - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'clients',
+      title: 'الموكلون',
+      render: async (root, ctx) => {
+        CrudPage.render(root, ctx, {
+          resource: '/clients',
+          title: 'إدارة الموكلين',
+          addLabel: 'إضافة موكل',
+          stats: async () => {
+            const [all, ind, co] = await Promise.all([
+              ctx.api('/clients', { params: { limit: 1 } }),
+              ctx.api('/clients', { params: { limit: 1, client_type: 'individual' } }),
+              ctx.api('/clients', { params: { limit: 1, client_type: 'company' } })
+            ]);
+            return [
+              { value: all.pagination.total, label: 'إجمالي الموكلين' },
+              { value: ind.pagination.total, label: 'أفراد' },
+              { value: co.pagination.total, label: 'شركات' }
+            ];
+          },
+          filters: [
+            { key: 'client_type', type: 'select', label: 'النوع', options: [
+              { value: 'individual', label: 'فرد' },
+              { value: 'company', label: 'شركة' }
+            ]},
+            { key: 'city', type: 'text', label: 'المدينة' }
+          ],
+          columns: [
+            { key: 'first_name', label: 'الاسم', render: (r) => ctx.esc(`${r.first_name || ''} ${r.last_name || ''}`.trim()) },
+            { key: 'email', label: 'البريد الإلكتروني' },
+            { key: 'phone', label: 'الهاتف' },
+            { key: 'city', label: 'المدينة' },
+            { key: 'client_type', label: 'النوع', render: (r) => r.client_type === 'company' ? 'شركة' : 'فرد' },
+            { key: 'is_active', label: 'الحالة', render: (r) => `<span class="badge ${r.is_active ? 'active' : 'closed'}">${r.is_active ? 'نشط' : 'غير نشط'}</span>` }
+          ],
+          onBeforeSubmit: async (data, existing) => {
+            if (existing) return data;
+            const payload = {
+              name: `${data.first_name || ''} ${data.last_name || ''}`.trim(),
+              email: data.email || null,
+              phone: data.phone || null,
+              national_id: data.national_id || null
+            };
+            const { data: check } = await ctx.api('/conflicts/check', { method: 'POST', body: payload });
+            if (check.hasConflict) {
+              const confirmed = await new Promise((resolve) => {
+                const lines = [];
+                if (check.clients.length) lines.push(`<strong>موكلون مشابهون:</strong><ul>${check.clients.map(c => `<li>${ctx.esc(c.first_name)} ${ctx.esc(c.last_name)} — ${ctx.esc(c.email || c.phone || '')}</li>`).join('')}</ul>`);
+                if (check.opponents.length) lines.push(`<strong>⚠️ خصوم في قضايا:</strong><ul>${check.opponents.map(o => `<li>${ctx.esc(o.case_number)} — ${ctx.esc(o.opponent_name || '')}</li>`).join('')}</ul>`);
+                const m = ctx.openModal({
+                  title: 'تنبيه تعارض مصالح',
+                  contentHTML: `<div style="line-height:1.8">${lines.join('')}</div><p style="margin-top:12px">هل تريد المتابعة رغم ذلك؟</p>`,
+                  okText: 'متابعة',
+                  onOk: () => { resolve(true); return true; }
+                });
+                m.body.parentElement.querySelector('.cancel').addEventListener('click', () => resolve(false));
+                m.body.parentElement.querySelector('.close').addEventListener('click', () => resolve(false));
+              });
+              if (!confirmed) throw new Error('تم إلغاء الإضافة');
+            }
+            return data;
+          },
+          form: [
+            { key: 'first_name', label: 'الاسم الأول', type: 'text', required: true },
+            { key: 'last_name', label: 'اسم العائلة', type: 'text', required: true },
+            { key: 'email', label: 'البريد الإلكتروني', type: 'email' },
+            { key: 'phone', label: 'الهاتف', type: 'tel' },
+            { key: 'national_id', label: 'رقم الهوية', type: 'text' },
+            { key: 'client_type', label: 'النوع', type: 'select', options: [
+              { value: 'individual', label: 'فرد' }, { value: 'company', label: 'شركة' }
+            ]},
+            { key: 'company_name', label: 'اسم الشركة', type: 'text' },
+            { key: 'company_cr', label: 'السجل التجاري', type: 'text' },
+            { key: 'city', label: 'المدينة', type: 'text' },
+            { key: 'country', label: 'الدولة', type: 'text' },
+            { key: 'date_of_birth', label: 'تاريخ الميلاد', type: 'date' },
+            { key: 'address', label: 'العنوان', type: 'textarea', width: 'full' },
+            { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' }
+          ]
+        });
+      }
+    });
+  </script>
+</body>
+</html>

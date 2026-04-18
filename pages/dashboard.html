@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة التحكم - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+    .bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 180px; padding: 10px 0 30px; }
+    .bar-chart .bar { flex: 1; background: linear-gradient(180deg, var(--brand), var(--brand-hover)); border-radius: 4px 4px 0 0; position: relative; min-height: 4px; }
+    .bar-chart .bar .lbl { position: absolute; bottom: -22px; width: 100%; text-align: center; font-size: .75rem; color: var(--muted); }
+    .event-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .event-row:last-child { border-bottom: none; }
+    .event-date { text-align: center; background: var(--brand); color: #fff; border-radius: 8px; padding: 6px 10px; min-width: 56px; }
+    .event-date .day { font-size: 1.2rem; font-weight: 700; }
+    .event-date .mon { font-size: .7rem; }
+    .quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .quick { background: var(--bg); border: 1px solid var(--border); padding: 14px; border-radius: 10px; text-align: center; transition: background .15s; }
+    .quick:hover { background: #fff; border-color: var(--brand); color: var(--brand); }
+    .quick .icon { font-size: 1.5rem; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'dashboard',
+      title: 'لوحة التحكم',
+      render: async (root, ctx) => {
+        root.innerHTML = `
+          <div class="page-header">
+            <div><h2 class="page-title">لوحة التحكم</h2><p class="page-subtitle">نظرة عامة على المكتب</p></div>
+          </div>
+          <div class="stats-row" id="stats"></div>
+          <div class="grid-2">
+            <div class="card"><h3>إيرادات السنة الحالية</h3><div id="rev" class="bar-chart"></div></div>
+            <div class="card"><h3>الجلسات القادمة</h3><div id="hearings"></div></div>
+          </div>
+          <div class="card"><h3>توزيع القضايا</h3><div id="cases" class="filters" style="gap:10px"></div></div>
+          <div class="card">
+            <h3>إجراءات سريعة</h3>
+            <div class="quick-grid">
+              <a class="quick" href="clients.html"><div class="icon">👥</div>إضافة موكل</a>
+              <a class="quick" href="cases.html"><div class="icon">⚖️</div>فتح قضية</a>
+              <a class="quick" href="documents.html"><div class="icon">📄</div>رفع مستند</a>
+              <a class="quick" href="hearings.html"><div class="icon">🏛️</div>جدولة جلسة</a>
+              <a class="quick" href="tasks.html"><div class="icon">📋</div>إضافة مهمة</a>
+              <a class="quick" href="billing.html"><div class="icon">💰</div>إنشاء فاتورة</a>
+            </div>
+          </div>`;
+
+        try {
+          const [ov, upcoming, casesR, fin, dlOver] = await Promise.all([
+            ctx.api('/reports/overview'),
+            ctx.api('/hearings/upcoming'),
+            ctx.api('/reports/cases'),
+            ctx.api('/reports/financial'),
+            ctx.api('/deadlines/overdue').catch(() => ({ data: [] }))
+          ]);
+          if ((dlOver.data || []).length) {
+            const banner = document.createElement('div');
+            banner.style.cssText = 'background:#fee2e2;color:#991b1b;padding:14px 18px;border-radius:10px;margin-bottom:16px;border-right:4px solid var(--danger)';
+            banner.innerHTML = `⚠️ <strong>${dlOver.data.length}</strong> موعد نهائي فائت — <a href="deadlines.html" style="text-decoration:underline">عرض</a>`;
+            root.querySelector('.page-header').after(banner);
+          }
+          const s = ov.data;
+          root.querySelector('#stats').innerHTML = `
+            <div class="stat-card"><div class="stat-value">${s.totalClients}</div><div class="stat-label">الموكلون</div></div>
+            <div class="stat-card"><div class="stat-value">${s.activeCases}</div><div class="stat-label">قضايا نشطة</div></div>
+            <div class="stat-card"><div class="stat-value">${s.pendingTasks}</div><div class="stat-label">مهام معلقة</div></div>
+            <div class="stat-card"><div class="stat-value">${s.upcomingHearings}</div><div class="stat-label">جلسات قادمة</div></div>
+            <div class="stat-card"><div class="stat-value">${s.documentsCount}</div><div class="stat-label">المستندات</div></div>
+            <div class="stat-card"><div class="stat-value" style="font-size:1.3rem">${ctx.fmtMoney(s.thisMonthRevenue)}</div><div class="stat-label">إيرادات هذا الشهر</div></div>`;
+
+          const MONTHS = ['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس'];
+          const monthly = fin.data.monthly || [];
+          const max = Math.max(1, ...monthly.map(m => +m.revenue));
+          root.querySelector('#rev').innerHTML = monthly.length
+            ? monthly.map(m => `<div class="bar" style="height:${(+m.revenue / max) * 100}%" title="${ctx.fmtMoney(m.revenue)}"><span class="lbl">${MONTHS[+m.month - 1] || m.month}</span></div>`).join('')
+            : '<div style="color:var(--muted);text-align:center">لا توجد بيانات إيرادات بعد</div>';
+
+          const hearings = upcoming.data || [];
+          root.querySelector('#hearings').innerHTML = hearings.length
+            ? hearings.slice(0, 6).map(h => {
+                const d = new Date(h.scheduled_at);
+                return `<div class="event-row">
+                  <div class="event-date">
+                    <div class="day">${d.toLocaleDateString('ar-SA-u-ca-gregory', { day: '2-digit' })}</div>
+                    <div class="mon">${d.toLocaleDateString('ar-SA-u-ca-gregory', { month: 'short' })}</div>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-weight:600">${ctx.esc(h.title || 'جلسة')}</div>
+                    <div style="color:var(--muted);font-size:.85rem">${d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })} ${h.court_name ? '• ' + ctx.esc(h.court_name) : ''}</div>
+                  </div>
+                </div>`;
+              }).join('')
+            : '<div style="color:var(--muted);text-align:center;padding:20px">لا توجد جلسات قادمة</div>';
+
+          const STATUS_LBL = { active: 'نشطة', pending: 'معلقة', closed: 'مغلقة', archived: 'مؤرشفة', suspended: 'موقوفة' };
+          const byStatus = casesR.data.byStatus || [];
+          root.querySelector('#cases').innerHTML = byStatus.length
+            ? byStatus.map(b => `<div class="stat-card" style="flex:1;min-width:120px;margin:0"><div class="stat-value">${b.count}</div><div class="stat-label">${STATUS_LBL[b.status] || b.status}</div></div>`).join('')
+            : '<div style="color:var(--muted)">لا توجد قضايا بعد</div>';
+        } catch (e) {
+          ctx.toast('فشل تحميل لوحة التحكم: ' + e.message, 'error');
+        }
+      }
+    });
+  </script>
+</body>
+</html>

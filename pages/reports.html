@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>التقارير - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 220px; padding: 10px 0; }
+    .bar-chart .bar { flex: 1; background: linear-gradient(180deg, var(--brand), var(--brand-hover)); border-radius: 4px 4px 0 0; position: relative; min-height: 4px; color: #fff; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; font-size: .7rem; }
+    .bar-chart .bar .lbl { position: absolute; bottom: -22px; font-size: .75rem; color: var(--muted); }
+    .status-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .status-pill { background: #f3f4f6; padding: 8px 14px; border-radius: 999px; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'reports',
+      title: 'التقارير',
+      render: async (root, ctx) => {
+        root.innerHTML = `
+          <div class="page-header"><h2 class="page-title">التقارير والإحصائيات</h2></div>
+          <div class="stats-row" id="ov"></div>
+          <div class="card"><h3>توزيع القضايا حسب الحالة</h3><div id="byStatus" class="status-pills"></div></div>
+          <div class="card"><h3>توزيع القضايا حسب النوع</h3><div id="byType" class="status-pills"></div></div>
+          <div class="card"><h3>الإيرادات الشهرية (${new Date().getFullYear()})</h3><div id="monthly" class="bar-chart"></div><div style="height:28px"></div></div>
+          <div class="card"><h3>أعلى الموكلين قيمة</h3><div class="table-wrap"><table class="data" id="topClients"><thead><tr><th>الاسم</th><th>عدد القضايا</th><th>إجمالي الفواتير</th></tr></thead><tbody></tbody></table></div></div>
+          <div class="card"><h3>إنتاجية الفريق</h3><div class="table-wrap"><table class="data" id="prod"><thead><tr><th>الاسم</th><th>مهام مكتملة</th><th>قضايا نشطة</th></tr></thead><tbody></tbody></table></div></div>`;
+
+        const [ov, cases, fin, tc, prod] = await Promise.all([
+          ctx.api('/reports/overview'),
+          ctx.api('/reports/cases'),
+          ctx.api('/reports/financial'),
+          ctx.api('/reports/clients'),
+          ctx.api('/reports/productivity')
+        ]);
+
+        const s = ov.data;
+        root.querySelector('#ov').innerHTML = `
+          <div class="stat-card"><div class="stat-value">${s.totalClients}</div><div class="stat-label">الموكلون</div></div>
+          <div class="stat-card"><div class="stat-value">${s.activeCases}</div><div class="stat-label">قضايا نشطة</div></div>
+          <div class="stat-card"><div class="stat-value">${s.pendingTasks}</div><div class="stat-label">مهام قيد الانتظار</div></div>
+          <div class="stat-card"><div class="stat-value">${s.upcomingHearings}</div><div class="stat-label">جلسات قادمة</div></div>
+          <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(s.thisMonthRevenue)}</div><div class="stat-label">إيرادات هذا الشهر</div></div>`;
+
+        const STATUS_LBL = { active: 'نشطة', pending: 'معلقة', closed: 'مغلقة', archived: 'مؤرشفة', suspended: 'موقوفة' };
+        const TYPE_LBL = { civil: 'مدنية', criminal: 'جنائية', commercial: 'تجارية', family: 'أحوال شخصية', labor: 'عمالية', real_estate: 'عقارية', other: 'أخرى' };
+        root.querySelector('#byStatus').innerHTML = (cases.data.byStatus || []).map(b => `<span class="status-pill">${STATUS_LBL[b.status] || b.status}: <strong>${b.count}</strong></span>`).join('') || 'لا بيانات';
+        root.querySelector('#byType').innerHTML = (cases.data.byType || []).map(b => `<span class="status-pill">${TYPE_LBL[b.case_type] || b.case_type}: <strong>${b.count}</strong></span>`).join('') || 'لا بيانات';
+
+        const MONTHS = ['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس'];
+        const monthly = fin.data.monthly || [];
+        const max = Math.max(1, ...monthly.map(m => +m.revenue));
+        root.querySelector('#monthly').innerHTML = monthly.length
+          ? monthly.map(m => `<div class="bar" style="height:${(+m.revenue / max) * 100}%" title="${ctx.fmtMoney(m.revenue)}"><span class="lbl">${MONTHS[+m.month - 1] || m.month}</span></div>`).join('')
+          : '<div style="color:var(--muted)">لا توجد بيانات للسنة الحالية</div>';
+
+        root.querySelector('#topClients tbody').innerHTML = (tc.data || []).slice(0, 10).map(r => `
+          <tr><td>${ctx.esc(r.first_name)} ${ctx.esc(r.last_name)}</td><td>${r.cases_count}</td><td>${ctx.fmtMoney(r.total_billed)}</td></tr>
+        `).join('') || '<tr><td class="empty" colspan="3">لا بيانات</td></tr>';
+
+        root.querySelector('#prod tbody').innerHTML = (prod.data || []).map(r => `
+          <tr><td>${ctx.esc(r.first_name)} ${ctx.esc(r.last_name)}</td><td>${r.completed_tasks}</td><td>${r.active_cases}</td></tr>
+        `).join('') || '<tr><td class="empty" colspan="3">لا بيانات</td></tr>';
+      }
+    });
+  </script>
+</body>
+</html>

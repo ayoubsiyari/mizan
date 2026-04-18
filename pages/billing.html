@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الفواتير - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; border: none; background: transparent; font: inherit; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const INVOICE_STATUS = [
+      { value: 'draft', label: 'مسودة' }, { value: 'sent', label: 'مرسلة' },
+      { value: 'paid', label: 'مدفوعة' }, { value: 'overdue', label: 'متأخرة' },
+      { value: 'cancelled', label: 'ملغاة' }
+    ];
+    const PAY_METHODS = [
+      { value: 'cash', label: 'نقدي' }, { value: 'bank_transfer', label: 'تحويل بنكي' },
+      { value: 'credit_card', label: 'بطاقة ائتمان' }, { value: 'check', label: 'شيك' },
+      { value: 'other', label: 'أخرى' }
+    ];
+
+    AppShell.mount({
+      page: 'billing',
+      title: 'الفواتير والمالية',
+      render: async (root, ctx) => {
+        root.innerHTML = `
+          <div class="page-header">
+            <h2 class="page-title">الفواتير والمالية</h2>
+          </div>
+          <div class="stats-row" id="fStats"></div>
+          <div class="tabs">
+            <button class="tab active" data-tab="invoices">الفواتير</button>
+            <button class="tab" data-tab="payments">المدفوعات</button>
+            <button class="tab" data-tab="expenses">المصروفات</button>
+          </div>
+          <div id="tabHost"></div>`;
+
+        // Load summary
+        try {
+          const { data } = await ctx.api('/billing/reports/summary');
+          const host = root.querySelector('#fStats');
+          host.innerHTML = `
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(data.invoices.total)}</div><div class="stat-label">إجمالي الفواتير</div></div>
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(data.invoices.paid)}</div><div class="stat-label">المدفوع</div></div>
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(data.invoices.outstanding)}</div><div class="stat-label">المستحق</div></div>
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(data.expenses.total)}</div><div class="stat-label">إجمالي المصروفات</div></div>`;
+        } catch (e) { /* */ }
+
+        const tabHost = root.querySelector('#tabHost');
+        const tabs = root.querySelectorAll('.tab');
+        function showTab(name) {
+          tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+          tabHost.innerHTML = '';
+          if (name === 'invoices') renderInvoices();
+          else if (name === 'payments') renderPayments();
+          else renderExpenses();
+        }
+        tabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+        async function renderInvoices() {
+          CrudPage.render(tabHost, ctx, {
+            resource: '/billing/invoices',
+            title: '',
+            addLabel: 'فاتورة جديدة',
+            filters: [{ key: 'status', type: 'select', label: 'الحالة', options: INVOICE_STATUS }],
+            columns: [
+              { key: 'invoice_number', label: 'الرقم' },
+              { key: 'title', label: 'العنوان' },
+              { key: 'total_amount', label: 'الإجمالي', render: (r) => ctx.fmtMoney(r.total_amount, r.currency) },
+              { key: 'paid_amount', label: 'المدفوع', render: (r) => ctx.fmtMoney(r.paid_amount, r.currency) },
+              { key: 'due_date', label: 'الاستحقاق', render: (r) => ctx.fmtDate(r.due_date) },
+              { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(INVOICE_STATUS.find(s => s.value === r.status) || {}).label}</span>` }
+            ],
+            rowActions: [
+              { label: 'تسجيل دفعة', onClick: async (row) => openPaymentFor(row) },
+              { label: 'طباعة / PDF', onClick: async (row) => {
+                const token = localStorage.getItem('authToken');
+                const w = window.open('', '_blank');
+                const res = await fetch(`/api/billing/invoices/${row.id}/print`, { headers: { Authorization: 'Bearer ' + token } });
+                const html = await res.text();
+                w.document.open(); w.document.write(html); w.document.close();
+              }}
+            ],
+            form: async () => {
+              const [{ data: clients }, { data: cases }] = await Promise.all([
+                ctx.api('/clients', { params: { limit: 200 } }),
+                ctx.api('/cases', { params: { limit: 200 } })
+              ]);
+              return [
+                { key: 'invoice_number', label: 'رقم الفاتورة', type: 'text', required: true },
+                { key: 'title', label: 'العنوان', type: 'text', required: true },
+                { key: 'client_id', label: 'الموكل', type: 'select', required: true,
+                  options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+                { key: 'case_id', label: 'القضية', type: 'select',
+                  options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+                { key: 'invoice_date', label: 'تاريخ الفاتورة', type: 'date', required: true },
+                { key: 'due_date', label: 'تاريخ الاستحقاق', type: 'date', required: true },
+                { key: 'subtotal', label: 'الفرعي', type: 'number' },
+                { key: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
+                { key: 'tax_amount', label: 'قيمة الضريبة', type: 'number' },
+                { key: 'discount_amount', label: 'الخصم', type: 'number' },
+                { key: 'total_amount', label: 'الإجمالي', type: 'number', required: true },
+                { key: 'status', label: 'الحالة', type: 'select', options: INVOICE_STATUS },
+                { key: 'currency', label: 'العملة', type: 'text' },
+                { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' },
+                { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' }
+              ];
+            }
+          });
+        }
+
+        function openPaymentFor(invoice) {
+          ctx.openModal({
+            title: 'تسجيل دفعة',
+            contentHTML: `
+              <form id="payForm" class="form-grid" onsubmit="event.preventDefault()">
+                <div class="form-field"><label>المبلغ *</label><input name="amount" type="number" step="0.01" required value="${invoice.total_amount - invoice.paid_amount}"></div>
+                <div class="form-field"><label>طريقة الدفع *</label>
+                  <select name="payment_method" required>${PAY_METHODS.map(p => `<option value="${p.value}">${p.label}</option>`).join('')}</select>
+                </div>
+                <div class="form-field"><label>التاريخ</label><input name="payment_date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+                <div class="form-field"><label>رقم المرجع</label><input name="reference_number"></div>
+                <div class="form-field full"><label>ملاحظات</label><textarea name="notes"></textarea></div>
+              </form>`,
+            onOk: async (body) => {
+              const f = body.querySelector('#payForm');
+              try {
+                await ctx.api('/billing/payments', { method: 'POST', body: {
+                  invoice_id: invoice.id,
+                  client_id: invoice.client_id,
+                  amount: parseFloat(f.amount.value),
+                  payment_method: f.payment_method.value,
+                  payment_date: f.payment_date.value,
+                  reference_number: f.reference_number.value || null,
+                  notes: f.notes.value || null
+                }});
+                // Update invoice paid_amount
+                const newPaid = (parseFloat(invoice.paid_amount) || 0) + parseFloat(f.amount.value);
+                await ctx.api(`/billing/invoices/${invoice.id}`, { method: 'PUT', body: {
+                  paid_amount: newPaid,
+                  status: newPaid >= invoice.total_amount ? 'paid' : invoice.status
+                }});
+                ctx.toast('تم تسجيل الدفعة', 'success');
+                return true;
+              } catch (e) { ctx.toast(e.message, 'error'); return false; }
+            }
+          });
+        }
+
+        async function renderPayments() {
+          CrudPage.render(tabHost, ctx, {
+            resource: '/billing/payments',
+            title: '',
+            addLabel: 'إضافة دفعة',
+            filters: [{ key: 'payment_method', type: 'select', label: 'الطريقة', options: PAY_METHODS }],
+            columns: [
+              { key: 'payment_date', label: 'التاريخ', render: (r) => ctx.fmtDate(r.payment_date) },
+              { key: 'amount', label: 'المبلغ', render: (r) => ctx.fmtMoney(r.amount) },
+              { key: 'payment_method', label: 'الطريقة', render: (r) => (PAY_METHODS.find(p => p.value === r.payment_method) || {}).label },
+              { key: 'reference_number', label: 'المرجع' },
+              { key: 'status', label: 'الحالة' }
+            ],
+            form: async () => {
+              const [{ data: clients }, { data: invoices }] = await Promise.all([
+                ctx.api('/clients', { params: { limit: 200 } }),
+                ctx.api('/billing/invoices', { params: { limit: 200 } })
+              ]);
+              return [
+                { key: 'client_id', label: 'الموكل', type: 'select', required: true,
+                  options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+                { key: 'invoice_id', label: 'الفاتورة', type: 'select',
+                  options: [{ value: '', label: '--' }, ...invoices.map(i => ({ value: i.id, label: i.invoice_number }))] },
+                { key: 'amount', label: 'المبلغ', type: 'number', required: true },
+                { key: 'payment_method', label: 'الطريقة', type: 'select', required: true, options: PAY_METHODS },
+                { key: 'payment_date', label: 'التاريخ', type: 'date', required: true },
+                { key: 'reference_number', label: 'رقم المرجع', type: 'text' },
+                { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' }
+              ];
+            }
+          });
+        }
+
+        async function renderExpenses() {
+          CrudPage.render(tabHost, ctx, {
+            resource: '/billing/expenses',
+            title: '',
+            addLabel: 'إضافة مصروف',
+            columns: [
+              { key: 'expense_date', label: 'التاريخ', render: (r) => ctx.fmtDate(r.expense_date) },
+              { key: 'category', label: 'التصنيف' },
+              { key: 'description', label: 'الوصف' },
+              { key: 'vendor', label: 'المورد' },
+              { key: 'amount', label: 'المبلغ', render: (r) => ctx.fmtMoney(r.amount, r.currency) },
+              { key: 'is_billable', label: 'قابل للتحصيل', render: (r) => r.is_billable ? '✓' : '' }
+            ],
+            form: async () => {
+              const [{ data: cases }, { data: clients }] = await Promise.all([
+                ctx.api('/cases', { params: { limit: 200 } }),
+                ctx.api('/clients', { params: { limit: 200 } })
+              ]);
+              return [
+                { key: 'expense_date', label: 'التاريخ', type: 'date', required: true },
+                { key: 'category', label: 'التصنيف', type: 'text', required: true },
+                { key: 'description', label: 'الوصف', type: 'text', required: true },
+                { key: 'amount', label: 'المبلغ', type: 'number', required: true },
+                { key: 'currency', label: 'العملة', type: 'text' },
+                { key: 'vendor', label: 'المورد', type: 'text' },
+                { key: 'payment_method', label: 'طريقة الدفع', type: 'select', options: [{ value: '', label: '--' }, ...PAY_METHODS] },
+                { key: 'receipt_number', label: 'رقم الإيصال', type: 'text' },
+                { key: 'case_id', label: 'القضية', type: 'select',
+                  options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+                { key: 'is_billable', label: 'قابل للتحصيل من العميل', type: 'select', options: [{ value: '0', label: 'لا' }, { value: '1', label: 'نعم' }] },
+                { key: 'billed_to_client_id', label: 'محمل على العميل', type: 'select',
+                  options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+                { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' }
+              ];
+            }
+          });
+        }
+
+        showTab('invoices');
+      }
+    });
+  </script>
+</body>
+</html>

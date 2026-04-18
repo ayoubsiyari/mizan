@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>القضايا - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const CASE_TYPES = [
+      { value: 'civil', label: 'مدنية' }, { value: 'criminal', label: 'جنائية' },
+      { value: 'commercial', label: 'تجارية' }, { value: 'family', label: 'أحوال شخصية' },
+      { value: 'labor', label: 'عمالية' }, { value: 'real_estate', label: 'عقارية' },
+      { value: 'other', label: 'أخرى' }
+    ];
+    const STATUS = [
+      { value: 'active', label: 'نشطة' }, { value: 'pending', label: 'معلقة' },
+      { value: 'closed', label: 'مغلقة' }, { value: 'archived', label: 'مؤرشفة' },
+      { value: 'suspended', label: 'موقوفة' }
+    ];
+    const PRIORITY = [
+      { value: 'low', label: 'منخفضة' }, { value: 'medium', label: 'متوسطة' },
+      { value: 'high', label: 'عالية' }, { value: 'urgent', label: 'عاجلة' }
+    ];
+
+    AppShell.mount({
+      page: 'cases',
+      title: 'القضايا',
+      render: async (root, ctx) => {
+        CrudPage.render(root, ctx, {
+          resource: '/cases',
+          title: 'إدارة القضايا',
+          addLabel: 'فتح قضية',
+          stats: async () => {
+            const [all, active, closed] = await Promise.all([
+              ctx.api('/cases', { params: { limit: 1 } }),
+              ctx.api('/cases', { params: { limit: 1, status: 'active' } }),
+              ctx.api('/cases', { params: { limit: 1, status: 'closed' } })
+            ]);
+            return [
+              { value: all.pagination.total, label: 'إجمالي القضايا' },
+              { value: active.pagination.total, label: 'نشطة' },
+              { value: closed.pagination.total, label: 'مغلقة' }
+            ];
+          },
+          filters: [
+            { key: 'status', type: 'select', label: 'الحالة', options: STATUS },
+            { key: 'case_type', type: 'select', label: 'النوع', options: CASE_TYPES },
+            { key: 'priority', type: 'select', label: 'الأولوية', options: PRIORITY }
+          ],
+          columns: [
+            { key: 'case_number', label: 'رقم القضية' },
+            { key: 'title', label: 'العنوان' },
+            { key: 'case_type', label: 'النوع', render: (r) => (CASE_TYPES.find(t => t.value === r.case_type) || {}).label || r.case_type },
+            { key: 'court_name', label: 'المحكمة' },
+            { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(STATUS.find(s => s.value === r.status) || {}).label || r.status}</span>` },
+            { key: 'priority', label: 'الأولوية', render: (r) => `<span class="badge ${r.priority}">${(PRIORITY.find(p => p.value === r.priority) || {}).label || r.priority}</span>` },
+            { key: 'filing_date', label: 'تاريخ القيد', render: (r) => ctx.fmtDate(r.filing_date) }
+          ],
+          form: async () => {
+            const [{ data: clients }, { data: users }] = await Promise.all([
+              ctx.api('/clients', { params: { limit: 200 } }),
+              ctx.api('/settings/users').catch(() => ({ data: [] }))
+            ]);
+            const clientOpts = [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))];
+            const userOpts = [{ value: '', label: '--' }, ...users.map(u => ({ value: u.id, label: `${u.first_name} ${u.last_name}` }))];
+            return [
+              { key: 'case_number', label: 'رقم القضية', type: 'text', required: true },
+              { key: 'title', label: 'عنوان القضية', type: 'text', required: true },
+              { key: 'client_id', label: 'الموكل', type: 'select', required: true, options: clientOpts },
+              { key: 'case_type', label: 'النوع', type: 'select', required: true, options: CASE_TYPES },
+              { key: 'status', label: 'الحالة', type: 'select', options: STATUS },
+              { key: 'priority', label: 'الأولوية', type: 'select', options: PRIORITY },
+              { key: 'assigned_lawyer_id', label: 'المحامي المكلف', type: 'select', options: userOpts },
+              { key: 'court_name', label: 'المحكمة', type: 'text' },
+              { key: 'judge_name', label: 'القاضي', type: 'text' },
+              { key: 'opponent_name', label: 'الخصم', type: 'text' },
+              { key: 'opponent_lawyer', label: 'محامي الخصم', type: 'text' },
+              { key: 'case_value', label: 'قيمة القضية', type: 'number' },
+              { key: 'currency', label: 'العملة', type: 'text' },
+              { key: 'filing_date', label: 'تاريخ القيد', type: 'date' },
+              { key: 'expected_resolution_date', label: 'تاريخ الحل المتوقع', type: 'date' },
+              { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' },
+              { key: 'outcome', label: 'النتيجة', type: 'textarea', width: 'full' }
+            ];
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

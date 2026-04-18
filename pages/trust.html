@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>حساب الأمانات - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const KINDS = [
+      { value: 'deposit',    label: 'إيداع' },
+      { value: 'withdrawal', label: 'سحب' },
+      { value: 'fee',        label: 'أتعاب' },
+      { value: 'refund',     label: 'استرداد' },
+      { value: 'adjustment', label: 'تسوية' }
+    ];
+
+    AppShell.mount({
+      page: 'trust',
+      title: 'حساب الأمانات',
+      render: async (root, ctx) => {
+        root.innerHTML = `
+          <div class="page-header"><h2 class="page-title">حساب أمانات الموكلين</h2></div>
+          <div class="stats-row" id="tstats"></div>
+          <div class="card">
+            <h3>أرصدة الموكلين</h3>
+            <div class="table-wrap">
+              <table class="data" id="balTable">
+                <thead><tr><th>الموكل</th><th>الرصيد</th></tr></thead>
+                <tbody><tr><td class="empty" colspan="2">جارِ التحميل...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="txns"></div>`;
+
+        try {
+          const { data: s } = await ctx.api('/trust/summary');
+          root.querySelector('#tstats').innerHTML = `
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(s.total_balance)}</div><div class="stat-label">الرصيد الإجمالي</div></div>
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(s.total_deposits)}</div><div class="stat-label">إجمالي الإيداعات</div></div>
+            <div class="stat-card"><div class="stat-value">${ctx.fmtMoney(s.total_withdrawals)}</div><div class="stat-label">إجمالي السحوبات/الأتعاب</div></div>`;
+
+          const { data: bals } = await ctx.api('/trust/balances');
+          const tbody = root.querySelector('#balTable tbody');
+          tbody.innerHTML = bals.length
+            ? bals.map(b => `<tr><td>${ctx.esc(b.first_name)} ${ctx.esc(b.last_name)}</td><td>${ctx.fmtMoney(b.balance)}</td></tr>`).join('')
+            : `<tr><td class="empty" colspan="2">لا أرصدة</td></tr>`;
+        } catch (e) { /* */ }
+
+        CrudPage.render(root.querySelector('#txns'), ctx, {
+          resource: '/trust',
+          title: 'الحركات',
+          addLabel: 'إضافة حركة',
+          filters: [
+            { key: 'kind', type: 'select', label: 'النوع', options: KINDS }
+          ],
+          columns: [
+            { key: 'transaction_date', label: 'التاريخ', render: (r) => ctx.fmtDate(r.transaction_date) },
+            { key: 'kind', label: 'النوع', render: (r) => (KINDS.find(k => k.value === r.kind) || {}).label || r.kind },
+            { key: 'amount', label: 'المبلغ', render: (r) => {
+              const neg = ['withdrawal', 'fee'].includes(r.kind);
+              return `<span style="color:${neg ? 'var(--danger)' : 'var(--success)'}">${neg ? '-' : '+'}${ctx.fmtMoney(r.amount, r.currency)}</span>`;
+            }},
+            { key: 'description', label: 'الوصف' },
+            { key: 'reference_number', label: 'المرجع' }
+          ],
+          form: async () => {
+            const [{ data: clients }, { data: cases }, { data: invoices }] = await Promise.all([
+              ctx.api('/clients', { params: { limit: 200 } }),
+              ctx.api('/cases', { params: { limit: 200 } }),
+              ctx.api('/billing/invoices', { params: { limit: 200 } }).catch(() => ({ data: [] }))
+            ]);
+            return [
+              { key: 'client_id', label: 'الموكل', type: 'select', required: true,
+                options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+              { key: 'kind', label: 'النوع', type: 'select', required: true, options: KINDS },
+              { key: 'amount', label: 'المبلغ', type: 'number', required: true },
+              { key: 'currency', label: 'العملة', type: 'text' },
+              { key: 'transaction_date', label: 'التاريخ', type: 'date', required: true },
+              { key: 'reference_number', label: 'رقم المرجع', type: 'text' },
+              { key: 'bank_name', label: 'البنك', type: 'text' },
+              { key: 'case_id', label: 'القضية', type: 'select',
+                options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+              { key: 'invoice_id', label: 'الفاتورة', type: 'select',
+                options: [{ value: '', label: '--' }, ...invoices.map(i => ({ value: i.id, label: i.invoice_number }))] },
+              { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' }
+            ];
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

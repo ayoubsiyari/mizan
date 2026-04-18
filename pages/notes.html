@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الملاحظات - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'notes',
+      title: 'الملاحظات',
+      render: async (root, ctx) => {
+        CrudPage.render(root, ctx, {
+          resource: '/notes',
+          title: 'الملاحظات',
+          addLabel: 'إضافة ملاحظة',
+          columns: [
+            { key: 'title', label: 'العنوان' },
+            { key: 'category', label: 'التصنيف' },
+            { key: 'is_pinned', label: 'مثبتة', render: (r) => r.is_pinned ? '📌' : '' },
+            { key: 'is_private', label: 'خاصة', render: (r) => r.is_private ? '🔒' : '' },
+            { key: 'created_at', label: 'التاريخ', render: (r) => ctx.fmtDate(r.created_at) }
+          ],
+          form: async () => {
+            const [{ data: cases }, { data: clients }] = await Promise.all([
+              ctx.api('/cases', { params: { limit: 200 } }),
+              ctx.api('/clients', { params: { limit: 200 } })
+            ]);
+            return [
+              { key: 'title', label: 'العنوان', type: 'text', required: true, width: 'full' },
+              { key: 'category', label: 'التصنيف', type: 'text' },
+              { key: 'case_id', label: 'القضية', type: 'select',
+                options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+              { key: 'client_id', label: 'الموكل', type: 'select',
+                options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+              { key: 'is_pinned', label: 'تثبيت', type: 'select', options: [{ value: '0', label: 'لا' }, { value: '1', label: 'نعم' }] },
+              { key: 'is_private', label: 'خاصة', type: 'select', options: [{ value: '0', label: 'لا' }, { value: '1', label: 'نعم' }] },
+              { key: 'content', label: 'المحتوى', type: 'textarea', required: true, width: 'full' }
+            ];
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

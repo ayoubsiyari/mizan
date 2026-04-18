@@ -1,0 +1,407 @@
+/* Print Styles */
+
+/* Base Print Styles */
+@media print {
+  /* Hide unnecessary elements */
+  .no-print,
+  .app-sidebar,
+  .app-header,
+  .mobile-menu-toggle,
+  .btn,
+  .modal-overlay,
+  .tooltip,
+  .dropdown-menu,
+  .pagination,
+  .page-actions,
+  .form-actions,
+  .nav-tabs,
+  .accordion-button,
+  .theme-toggle,
+  .alert-dismissible .close,
+  .loading,
+  .skeleton {
+    display: none !important;
+  }
+  
+  /* Reset margins and padding */
+  * {
+    margin: 0 !important;
+    padding: 0 !important;
+    float: none !important;
+    position: static !important;
+    overflow: visible !important;
+  }
+  
+  /* Base typography */
+  body {
+    font-size: 12pt;
+    line-height: 1.4;
+    color: #000 !important;
+    background: #fff !important;
+    font-family: 'Tajawal', Arial, sans-serif !important;
+    direction: rtl !important;
+    text-align: right !important;
+  }
+  
+  /* Headings */
+  h1 { font-size: 18pt; margin-bottom: 12pt !important; }
+  h2 { font-size: 16pt; margin-bottom: 10pt !important; }
+  h3 { font-size: 14pt; margin-bottom: 8pt !important; }
+  h4 { font-size: 13pt; margin-bottom: 6pt !important; }
+  h5 { font-size: 12pt; margin-bottom: 6pt !important; }
+  h6 { font-size: 11pt; margin-bottom: 4pt !important; }
+  
+  /* Paragraphs */
+  p {
+    margin-bottom: 8pt !important;
+    orphans: 3;
+    widows: 3;
+  }
+  
+  /* Links */
+  a {
+    color: #000 !important;
+    text-decoration: underline !important;
+  }
+  
+  a[href]:after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #666;
+  }
+  
+  a[href^="#"]:after,
+  a[href^="javascript:"]:after {
+    content: "";
+  }
+  
+  /* Tables */
+  .table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 12pt !important;
+  }
+  
+  .table th,
+  .table td {
+    border: 1pt solid #000 !important;
+    padding: 6pt !important;
+    text-align: right !important;
+    vertical-align: top !important;
+    font-size: 10pt !important;
+  }
+  
+  .table th {
+    background: #f5f5f5 !important;
+    font-weight: bold !important;
+  }
+  
+  .table tbody tr {
+    page-break-inside: avoid;
+  }
+  
+  /* Cards */
+  .card {
+    border: 1pt solid #000 !important;
+    margin-bottom: 12pt !important;
+    page-break-inside: avoid;
+    background: #fff !important;
+  }
+  
+  .card-header,
+  .card-body,
+  .card-footer {
+    border: none !important;
+    background: #fff !important;
+    padding: 8pt !important;
+  }
+  
+  .card-header {
+    border-bottom: 1pt solid #000 !important;
+  }
+  
+  .card-footer {
+    border-top: 1pt solid #000 !important;
+  }
+  
+  /* Forms */
+  .form-group {
+    margin-bottom: 8pt !important;
+  }
+  
+  .form-label {
+    font-weight: bold !important;
+    margin-bottom: 2pt !important;
+  }
+  
+  .form-input,
+  .form-select,
+  .form-textarea {
+    border: 1pt solid #000 !important;
+    padding: 4pt !important;
+    background: #fff !important;
+    font-size: 10pt !important;
+  }
+  
+  /* Badges */
+  .badge {
+    border: 1pt solid #000 !important;
+    padding: 2pt 4pt !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 9pt !important;
+  }
+  
+  /* Alerts */
+  .alert {
+    border: 1pt solid #000 !important;
+    padding: 6pt !important;
+    margin-bottom: 8pt !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  
+  /* Lists */
+  ul, ol {
+    margin-bottom: 8pt !important;
+    padding-right: 20pt !important;
+  }
+  
+  li {
+    margin-bottom: 4pt !important;
+  }
+  
+  /* Blockquotes */
+  blockquote {
+    border-right: 3pt solid #000 !important;
+    margin: 12pt 0 !important;
+    padding: 8pt 12pt !important;
+    background: #f9f9f9 !important;
+    font-style: italic !important;
+  }
+  
+  /* Code */
+  code, pre {
+    font-family: 'Courier New', monospace !important;
+    font-size: 10pt !important;
+    background: #f5f5f5 !important;
+    border: 1pt solid #ddd !important;
+    padding: 4pt !important;
+  }
+  
+  pre {
+    padding: 8pt !important;
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+  }
+  
+  /* Images */
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+  
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always !important;
+  }
+  
+  .page-break-after {
+    page-break-after: always !important;
+  }
+  
+  .page-break-inside-avoid {
+    page-break-inside: avoid !important;
+  }
+  
+  /* Headers and footers */
+  @page {
+    margin: 2cm;
+    size: A4;
+  }
+  
+  @page :first {
+    margin-top: 3cm;
+  }
+  
+  /* Document specific styles */
+  .document-header {
+    text-align: center !important;
+    margin-bottom: 24pt !important;
+    border-bottom: 2pt solid #000 !important;
+    padding-bottom: 12pt !important;
+  }
+  
+  .document-title {
+    font-size: 20pt !important;
+    font-weight: bold !important;
+    margin-bottom: 8pt !important;
+  }
+  
+  .document-subtitle {
+    font-size: 14pt !important;
+    color: #666 !important;
+    margin-bottom: 4pt !important;
+  }
+  
+  .document-footer {
+    text-align: center !important;
+    margin-top: 24pt !important;
+    border-top: 1pt solid #000 !important;
+    padding-top: 12pt !important;
+    font-size: 10pt !important;
+    color: #666 !important;
+  }
+  
+  /* Invoice specific */
+  .invoice-header {
+    margin-bottom: 20pt !important;
+  }
+  
+  .invoice-details {
+    margin-bottom: 20pt !important;
+  }
+  
+  .invoice-table {
+    margin-bottom: 20pt !important;
+  }
+  
+  .invoice-total {
+    text-align: left !important;
+    font-weight: bold !important;
+    margin-top: 12pt !important;
+  }
+  
+  /* Contract specific */
+  .contract-header {
+    text-align: center !important;
+    margin-bottom: 30pt !important;
+  }
+  
+  .contract-parties {
+    margin-bottom: 20pt !important;
+  }
+  
+  .contract-clauses {
+    margin-bottom: 20pt !important;
+  }
+  
+  .contract-signatures {
+    margin-top: 40pt !important;
+    text-align: center !important;
+  }
+  
+  .signature-line {
+    border-bottom: 1pt solid #000 !important;
+    width: 200pt !important;
+    margin: 0 auto 8pt !important;
+  }
+  
+  /* Case file specific */
+  .case-file-header {
+    margin-bottom: 20pt !important;
+  }
+  
+  .case-info {
+    margin-bottom: 20pt !important;
+  }
+  
+  .case-details {
+    margin-bottom: 20pt !important;
+  }
+  
+  .case-timeline {
+    margin-bottom: 20pt !important;
+  }
+  
+  /* Calendar specific */
+  .calendar-print {
+    width: 100% !important;
+  }
+  
+  .calendar-print-header {
+    text-align: center !important;
+    margin-bottom: 20pt !important;
+  }
+  
+  .calendar-print-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  
+  .calendar-print-table th,
+  .calendar-print-table td {
+    border: 1pt solid #000 !important;
+    padding: 6pt !important;
+    text-align: center !important;
+    vertical-align: top !important;
+  }
+  
+  /* Report specific */
+  .report-header {
+    text-align: center !important;
+    margin-bottom: 24pt !important;
+  }
+  
+  .report-summary {
+    margin-bottom: 20pt !important;
+  }
+  
+  .report-charts {
+    margin-bottom: 20pt !important;
+  }
+  
+  .report-details {
+    margin-bottom: 20pt !important;
+  }
+  
+  /* RTL print fixes */
+  [dir="rtl"] {
+    direction: rtl !important;
+    text-align: right !important;
+  }
+  
+  [dir="rtl"] .table th,
+  [dir="rtl"] .table td {
+    text-align: right !important;
+  }
+  
+  [dir="rtl"] .invoice-total {
+    text-align: right !important;
+  }
+  
+  [dir="rtl"] .signature-line {
+    margin: 0 0 8pt auto !important;
+  }
+  
+  /* Print quality improvements */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  
+  /* Avoid widows and orphans */
+  p, li, td, th {
+    orphans: 3;
+    widows: 3;
+  }
+  
+  /* Keep important elements together */
+  .keep-together {
+    page-break-inside: avoid !important;
+  }
+  
+  /* Ensure proper spacing */
+  .print-spacer {
+    height: 12pt !important;
+    clear: both !important;
+  }
+  
+  /* Hide empty elements */
+  :empty {
+    display: none !important;
+  }
+}

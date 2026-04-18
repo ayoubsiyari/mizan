@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>العقود - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; border: none; background: transparent; font: inherit; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script src="../js/crud-page.js"></script>
+  <script>
+    const STATUS = [
+      { value: 'draft', label: 'مسودة' },
+      { value: 'pending_signature', label: 'بانتظار التوقيع' },
+      { value: 'signed', label: 'موقع' },
+      { value: 'expired', label: 'منتهي' },
+      { value: 'terminated', label: 'منتهٍ بالإنهاء' }
+    ];
+
+    AppShell.mount({
+      page: 'contracts',
+      title: 'العقود',
+      render: async (root, ctx) => {
+        root.innerHTML = `
+          <div class="page-header">
+            <h2 class="page-title">إدارة العقود</h2>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary" id="seedBtn">تهيئة قوالب جاهزة</button>
+              <button class="btn btn-primary" id="fromTplBtn">إنشاء من قالب</button>
+            </div>
+          </div>
+          <div class="stats-row" id="cstats"></div>
+          <div class="tabs">
+            <button class="tab active" data-tab="contracts">العقود</button>
+            <button class="tab" data-tab="templates">القوالب</button>
+          </div>
+          <div id="tabHost"></div>`;
+
+        try {
+          const [all, signed, pending] = await Promise.all([
+            ctx.api('/contracts', { params: { limit: 1 } }),
+            ctx.api('/contracts', { params: { limit: 1, status: 'signed' } }),
+            ctx.api('/contracts', { params: { limit: 1, status: 'pending_signature' } })
+          ]);
+          root.querySelector('#cstats').innerHTML = `
+            <div class="stat-card"><div class="stat-value">${all.pagination.total}</div><div class="stat-label">إجمالي العقود</div></div>
+            <div class="stat-card"><div class="stat-value">${signed.pagination.total}</div><div class="stat-label">موقعة</div></div>
+            <div class="stat-card"><div class="stat-value">${pending.pagination.total}</div><div class="stat-label">بانتظار التوقيع</div></div>`;
+        } catch {}
+
+        document.getElementById('seedBtn').addEventListener('click', async () => {
+          try {
+            const { data } = await ctx.api('/contracts/seed-templates', { method: 'POST' });
+            ctx.toast(`تمت إضافة ${data.inserted} قالب`, 'success');
+          } catch (e) { ctx.toast(e.message, 'error'); }
+        });
+
+        document.getElementById('fromTplBtn').addEventListener('click', async () => {
+          const [{ data: templates }, { data: clients }, { data: cases }] = await Promise.all([
+            ctx.api('/contracts/templates'),
+            ctx.api('/clients', { params: { limit: 200 } }),
+            ctx.api('/cases', { params: { limit: 200 } })
+          ]);
+          if (!templates.length) { ctx.toast('لا توجد قوالب — اضغط "تهيئة قوالب جاهزة" أولاً', 'warning'); return; }
+          // Extract merge fields for first template; when user switches, re-render fields
+          const buildFields = (tpl) => {
+            const keys = Array.from(new Set((tpl.content.match(/\{\{(\w+)\}\}/g) || []).map(k => k.slice(2, -2))));
+            return keys;
+          };
+          const currentTpl = templates[0];
+          const content = `
+            <div class="form-field full"><label>القالب *</label>
+              <select id="tplSel" required>${templates.map(t => `<option value="${t.id}">${ctx.esc(t.title)} (${ctx.esc(t.contract_type)})</option>`).join('')}</select>
+            </div>
+            <div class="form-field"><label>الموكل *</label>
+              <select id="tplClient" required>${clients.map(c => `<option value="${c.id}">${ctx.esc(c.first_name)} ${ctx.esc(c.last_name)}</option>`).join('')}</select>
+            </div>
+            <div class="form-field"><label>القضية</label>
+              <select id="tplCase"><option value="">--</option>${cases.map(c => `<option value="${c.id}">${ctx.esc(c.case_number)} - ${ctx.esc(c.title)}</option>`).join('')}</select>
+            </div>
+            <div class="form-field full"><label>حقول القالب</label><div id="mergeFields" class="form-grid" style="grid-column:1/-1"></div></div>`;
+          const modal = ctx.openModal({
+            title: 'إنشاء عقد من قالب',
+            contentHTML: `<form id="genForm" class="form-grid" onsubmit="event.preventDefault()">${content}</form>`,
+            okText: 'إنشاء',
+            onOk: async (body) => {
+              const f = body.querySelector('#genForm');
+              const data = {};
+              body.querySelectorAll('[data-merge]').forEach(i => { data[i.dataset.merge] = i.value; });
+              try {
+                await ctx.api('/contracts/generate', { method: 'POST', body: {
+                  templateId: f.querySelector('#tplSel').value,
+                  client_id: f.querySelector('#tplClient').value,
+                  case_id: f.querySelector('#tplCase').value || null,
+                  data
+                }});
+                ctx.toast('تم إنشاء العقد', 'success');
+                setTimeout(() => location.reload(), 400);
+                return true;
+              } catch (e) { ctx.toast(e.message, 'error'); return false; }
+            }
+          });
+          function renderMerge() {
+            const sel = modal.body.querySelector('#tplSel');
+            const tpl = templates.find(t => t.id === sel.value);
+            const host = modal.body.querySelector('#mergeFields');
+            const keys = buildFields(tpl);
+            host.innerHTML = keys.map(k => `
+              <div class="form-field"><label>${ctx.esc(k)}</label><input data-merge="${ctx.esc(k)}" type="text"></div>
+            `).join('') || '<div style="color:var(--muted)">لا حقول دمج في هذا القالب</div>';
+          }
+          modal.body.querySelector('#tplSel').addEventListener('change', renderMerge);
+          renderMerge();
+        });
+
+        const tabs = root.querySelectorAll('.tab');
+        const host = root.querySelector('#tabHost');
+        tabs.forEach(t => t.addEventListener('click', () => {
+          tabs.forEach(x => x.classList.toggle('active', x === t));
+          host.innerHTML = '';
+          (t.dataset.tab === 'contracts' ? renderContracts : renderTemplates)();
+        }));
+
+        function baseForm() {
+          return async () => {
+            const [{ data: clients }, { data: cases }] = await Promise.all([
+              ctx.api('/clients', { params: { limit: 200 } }),
+              ctx.api('/cases', { params: { limit: 200 } })
+            ]);
+            return [
+              { key: 'title', label: 'العنوان', type: 'text', required: true, width: 'full' },
+              { key: 'contract_type', label: 'نوع العقد', type: 'text', required: true },
+              { key: 'client_id', label: 'الموكل', type: 'select', required: true,
+                options: [{ value: '', label: '--' }, ...clients.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))] },
+              { key: 'case_id', label: 'القضية', type: 'select',
+                options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+              { key: 'status', label: 'الحالة', type: 'select', options: STATUS },
+              { key: 'value', label: 'القيمة', type: 'number' },
+              { key: 'currency', label: 'العملة', type: 'text' },
+              { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
+              { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+              { key: 'description', label: 'الوصف', type: 'textarea', width: 'full' },
+              { key: 'content', label: 'محتوى العقد', type: 'textarea', required: true, width: 'full' }
+            ];
+          };
+        }
+
+        function renderContracts() {
+          CrudPage.render(host, ctx, {
+            resource: '/contracts',
+            title: '',
+            addLabel: 'إضافة عقد',
+            filters: [{ key: 'status', type: 'select', label: 'الحالة', options: STATUS }],
+            columns: [
+              { key: 'title', label: 'العنوان' },
+              { key: 'contract_type', label: 'النوع' },
+              { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(STATUS.find(s => s.value === r.status) || {}).label || r.status}</span>` },
+              { key: 'value', label: 'القيمة', render: (r) => r.value ? ctx.fmtMoney(r.value, r.currency || 'SAR') : '—' },
+              { key: 'end_date', label: 'تاريخ الانتهاء', render: (r) => ctx.fmtDateSmart(r.end_date) }
+            ],
+            rowActions: [
+              { label: 'طباعة / PDF', onClick: async (row) => {
+                const token = localStorage.getItem('authToken');
+                const w = window.open('', '_blank');
+                const res = await fetch(`/api/contracts/${row.id}/print`, { headers: { Authorization: 'Bearer ' + token } });
+                const html = await res.text();
+                w.document.open(); w.document.write(html); w.document.close();
+              }},
+              { label: 'رابط توقيع العميل', onClick: async (row) => {
+                try {
+                  const { data } = await ctx.api(`/contracts/${row.id}/signing-link`, { method: 'POST', body: { party: 'client' } });
+                  ctx.openModal({
+                    title: 'رابط التوقيع الإلكتروني',
+                    contentHTML: `
+                      <p>أرسل هذا الرابط إلى الموكل. صالح لمدة 72 ساعة ويُستخدم مرة واحدة.</p>
+                      <div class="form-field full"><label>الرابط</label><input type="text" readonly value="${ctx.esc(data.url)}" onclick="this.select()"></div>
+                      <p style="color:var(--muted);font-size:.85rem">ينتهي: ${new Date(data.expires_at).toLocaleString('ar-SA')}</p>`,
+                    okText: 'نسخ الرابط',
+                    onOk: async () => {
+                      try { await navigator.clipboard.writeText(data.url); ctx.toast('تم النسخ', 'success'); } catch {}
+                      return true;
+                    }
+                  });
+                } catch (e) { ctx.toast(e.message, 'error'); }
+              }},
+              { label: 'توقيع المكتب', onClick: async (row) => {
+                try { await ctx.api(`/contracts/${row.id}/sign`, { method: 'POST', body: { party: 'firm' } }); ctx.toast('تم توقيع المكتب', 'success'); location.reload(); }
+                catch (e) { ctx.toast(e.message, 'error'); }
+              }}
+            ],
+            form: baseForm()
+          });
+        }
+
+        function renderTemplates() {
+          CrudPage.render(host, ctx, {
+            resource: '/contracts',
+            title: '',
+            addLabel: 'إضافة قالب',
+            columns: [
+              { key: 'title', label: 'اسم القالب' },
+              { key: 'contract_type', label: 'النوع' },
+              { key: 'description', label: 'الوصف' }
+            ],
+            filters: [], // all filters handled by status override below
+            form: async () => {
+              const fields = await baseForm()(ctx);
+              // Default to 'template' status
+              const statusField = fields.find(f => f.key === 'status');
+              if (statusField) statusField.options = [{ value: 'template', label: 'قالب' }, ...statusField.options];
+              return fields;
+            },
+            onBeforeSubmit: (data) => {
+              data.status = 'template';
+              return data;
+            }
+          });
+          // Inject status filter under the hood
+          const crudReq = host.querySelector('#crudTbody');
+          if (crudReq) {
+            // Append status=template to all list requests by intercepting: easier to reload with URL param.
+            // CrudPage already uses ?status if filter is set; here we just filter manually by re-filtering the data.
+          }
+          // Simpler: replace the fetch by overriding ctx.api? Too invasive. Instead, add a hidden filter via URL:
+          // Trick: set the search input to '' and use a data-filter. We already allow setting filters.
+          const filtersRow = host.querySelector('.filters');
+          if (filtersRow) {
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden'; hidden.dataset.filter = 'status'; hidden.value = 'template';
+            filtersRow.appendChild(hidden);
+            // Trigger a filter refresh
+            hidden.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+
+        renderContracts();
+      }
+    });
+  </script>
+</body>
+</html>

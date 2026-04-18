@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الإعدادات - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; border: none; background: transparent; font: inherit; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'settings',
+      title: 'الإعدادات',
+      render: async (root, ctx) => {
+        const isAdmin = ctx.user.role === 'admin';
+        root.innerHTML = `
+          <div class="page-header"><h2 class="page-title">الإعدادات</h2></div>
+          <div class="tabs">
+            <button class="tab active" data-tab="profile">الملف الشخصي</button>
+            <button class="tab" data-tab="password">كلمة المرور</button>
+            ${isAdmin ? `<button class="tab" data-tab="firm">المكتب</button>` : ''}
+            ${isAdmin ? `<button class="tab" data-tab="users">المستخدمون</button>` : ''}
+          </div>
+          <div id="tabHost"></div>`;
+
+        const tabHost = root.querySelector('#tabHost');
+        const tabs = root.querySelectorAll('.tab');
+        tabs.forEach(t => t.addEventListener('click', () => {
+          tabs.forEach(x => x.classList.toggle('active', x === t));
+          show(t.dataset.tab);
+        }));
+
+        async function show(name) {
+          tabHost.innerHTML = '';
+          if (name === 'profile') return renderProfile();
+          if (name === 'password') return renderPassword();
+          if (name === 'firm') return renderFirm();
+          if (name === 'users') return renderUsers();
+        }
+
+        async function renderProfile() {
+          const { data: u } = await ctx.api('/auth/profile');
+          tabHost.innerHTML = `
+            <div class="card"><form id="pf" class="form-grid" onsubmit="event.preventDefault()">
+              <div class="form-field"><label>الاسم الأول</label><input name="firstName" value="${ctx.esc(u.first_name || '')}"></div>
+              <div class="form-field"><label>اسم العائلة</label><input name="lastName" value="${ctx.esc(u.last_name || '')}"></div>
+              <div class="form-field"><label>البريد</label><input value="${ctx.esc(u.email)}" disabled></div>
+              <div class="form-field"><label>الهاتف</label><input name="phone" value="${ctx.esc(u.phone || '')}"></div>
+              <div class="form-field full"><button class="btn btn-primary" type="submit">حفظ</button></div>
+            </form></div>`;
+          tabHost.querySelector('#pf').addEventListener('submit', async (e) => {
+            const f = e.target;
+            try {
+              const { data } = await ctx.api('/auth/profile', { method: 'PUT', body: {
+                firstName: f.firstName.value, lastName: f.lastName.value, phone: f.phone.value
+              }});
+              localStorage.setItem('user', JSON.stringify(data));
+              ctx.toast('تم الحفظ', 'success');
+            } catch (err) { ctx.toast(err.message, 'error'); }
+          });
+        }
+
+        async function renderPassword() {
+          tabHost.innerHTML = `
+            <div class="card"><form id="pwf" class="form-grid" onsubmit="event.preventDefault()">
+              <div class="form-field full"><label>كلمة المرور الحالية</label><input name="current" type="password" required></div>
+              <div class="form-field full"><label>كلمة المرور الجديدة</label><input name="next" type="password" required></div>
+              <div class="form-field full"><button class="btn btn-primary" type="submit">تغيير كلمة المرور</button></div>
+            </form></div>`;
+          tabHost.querySelector('#pwf').addEventListener('submit', async (e) => {
+            const f = e.target;
+            try {
+              await ctx.api('/auth/change-password', { method: 'POST', body: {
+                currentPassword: f.current.value, newPassword: f.next.value
+              }});
+              ctx.toast('تم تغيير كلمة المرور', 'success'); f.reset();
+            } catch (err) { ctx.toast(err.message, 'error'); }
+          });
+        }
+
+        async function renderFirm() {
+          const { data: fm } = await ctx.api('/settings/firm');
+          tabHost.innerHTML = `
+            <div class="card"><form id="ff" class="form-grid" onsubmit="event.preventDefault()">
+              <div class="form-field"><label>اسم المكتب</label><input name="name" value="${ctx.esc(fm.name || '')}"></div>
+              <div class="form-field"><label>الاسم بالعربية</label><input name="name_ar" value="${ctx.esc(fm.name_ar || '')}"></div>
+              <div class="form-field"><label>رقم الترخيص</label><input name="license_number" value="${ctx.esc(fm.license_number || '')}"></div>
+              <div class="form-field"><label>السجل التجاري</label><input name="cr_number" value="${ctx.esc(fm.cr_number || '')}"></div>
+              <div class="form-field"><label>الهاتف</label><input name="phone" value="${ctx.esc(fm.phone || '')}"></div>
+              <div class="form-field"><label>البريد</label><input name="email" value="${ctx.esc(fm.email || '')}"></div>
+              <div class="form-field"><label>المدينة</label><input name="city" value="${ctx.esc(fm.city || '')}"></div>
+              <div class="form-field"><label>الموقع</label><input name="website" value="${ctx.esc(fm.website || '')}"></div>
+              <div class="form-field full"><label>العنوان</label><textarea name="address">${ctx.esc(fm.address || '')}</textarea></div>
+              <div class="form-field full"><button class="btn btn-primary" type="submit">حفظ</button></div>
+            </form></div>`;
+          tabHost.querySelector('#ff').addEventListener('submit', async (e) => {
+            const f = e.target;
+            const body = {};
+            ['name','name_ar','license_number','cr_number','phone','email','city','website','address'].forEach(k => body[k] = f[k].value);
+            try { await ctx.api('/settings/firm', { method: 'PUT', body }); ctx.toast('تم الحفظ', 'success'); }
+            catch (err) { ctx.toast(err.message, 'error'); }
+          });
+        }
+
+        async function renderUsers() {
+          const { data } = await ctx.api('/settings/users');
+          tabHost.innerHTML = `
+            <div class="page-header"><h3>المستخدمون</h3><button class="btn btn-primary" id="addU">+ إضافة مستخدم</button></div>
+            <div class="table-wrap"><table class="data">
+              <thead><tr><th>الاسم</th><th>البريد</th><th>الصلاحية</th><th>الحالة</th><th></th></tr></thead>
+              <tbody>${(data || []).map(u => `
+                <tr data-id="${u.id}">
+                  <td>${ctx.esc(u.first_name)} ${ctx.esc(u.last_name)}</td>
+                  <td>${ctx.esc(u.email)}</td>
+                  <td>${u.role}</td>
+                  <td><span class="badge ${u.is_active ? 'active' : 'closed'}">${u.is_active ? 'نشط' : 'غير نشط'}</span></td>
+                  <td class="actions"><button class="btn btn-sm btn-danger" data-del>حذف</button></td>
+                </tr>`).join('') || '<tr><td class="empty" colspan="5">لا مستخدمين</td></tr>'}
+              </tbody>
+            </table></div>`;
+          tabHost.querySelector('#addU').addEventListener('click', () => {
+            ctx.openModal({
+              title: 'إضافة مستخدم',
+              contentHTML: `
+                <form id="uf" class="form-grid" onsubmit="event.preventDefault()">
+                  <div class="form-field"><label>الاسم الأول *</label><input name="firstName" required></div>
+                  <div class="form-field"><label>اسم العائلة *</label><input name="lastName" required></div>
+                  <div class="form-field"><label>البريد *</label><input name="email" type="email" required></div>
+                  <div class="form-field"><label>الهاتف</label><input name="phone" type="tel"></div>
+                  <div class="form-field"><label>كلمة المرور *</label><input name="password" type="password" required></div>
+                  <div class="form-field"><label>الصلاحية</label>
+                    <select name="role">
+                      <option value="lawyer">محامي</option>
+                      <option value="assistant">مساعد</option>
+                      <option value="paralegal">مساعد قانوني</option>
+                      <option value="admin">مسؤول</option>
+                    </select>
+                  </div>
+                </form>`,
+              onOk: async (body) => {
+                const f = body.querySelector('#uf');
+                try {
+                  await ctx.api('/settings/users', { method: 'POST', body: {
+                    firstName: f.firstName.value, lastName: f.lastName.value,
+                    email: f.email.value, phone: f.phone.value || null,
+                    password: f.password.value, role: f.role.value
+                  }});
+                  ctx.toast('تم إضافة المستخدم', 'success'); renderUsers(); return true;
+                } catch (e) { ctx.toast(e.message, 'error'); return false; }
+              }
+            });
+          });
+          tabHost.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async (e) => {
+            if (!(await ctx.confirmModal('حذف المستخدم؟'))) return;
+            const id = e.target.closest('tr').dataset.id;
+            try { await ctx.api(`/settings/users/${id}`, { method: 'DELETE' }); ctx.toast('تم الحذف', 'success'); renderUsers(); }
+            catch (err) { ctx.toast(err.message, 'error'); }
+          }));
+        }
+
+        show('profile');
+      }
+    });
+  </script>
+</body>
+</html>
