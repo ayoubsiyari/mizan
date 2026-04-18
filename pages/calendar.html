@@ -382,7 +382,9 @@
                 </div>
                 <div class="form-field full"><label>الصيغة</label>
                   <select name="format">
+                    <option value="pdf">PDF (مناسب للطباعة)</option>
                     <option value="csv">CSV (Excel)</option>
+                    <option value="doc">Word (.doc)</option>
                     <option value="ics">ICS (تقويم جوجل / آيفون)</option>
                     <option value="json">JSON</option>
                   </select>
@@ -407,6 +409,8 @@
                 const fmt = f.format.value;
                 if (fmt === 'csv')      downloadCSV(items, fromStr, toStr);
                 else if (fmt === 'ics') downloadICS(items, fromStr, toStr);
+                else if (fmt === 'pdf') downloadPDF(items, fromStr, toStr);
+                else if (fmt === 'doc') downloadDOC(items, fromStr, toStr);
                 else                    downloadJSON(items, fromStr, toStr);
                 ctx.toast(`تم التصدير (${items.length} عنصر)`, 'success');
                 return true;
@@ -420,9 +424,45 @@
           const hearingsP  = kinds.hearing  ? ctx.api('/hearings',  { params: { limit: 2000 } }).catch(() => ({ data: [] })) : { data: [] };
           const deadlinesP = kinds.deadline ? ctx.api('/deadlines', { params: { limit: 2000 } }).catch(() => ({ data: [] })) : { data: [] };
           const tasksP     = kinds.task     ? ctx.api('/tasks',     { params: { limit: 2000 } }).catch(() => ({ data: [] })) : { data: [] };
-          // /calendar/month is per-month; iterate months in range.
           const eventsP = kinds.event ? fetchEventsRange(from, to) : Promise.resolve([]);
-          const [hearingsR, deadlinesR, tasksR, eventsR] = await Promise.all([hearingsP, deadlinesP, tasksP, eventsP]);
+          // Always fetch clients + cases so we can resolve "اسم الموكل" for each item.
+          const clientsP = ctx.api('/clients', { params: { limit: 5000 } }).catch(() => ({ data: [] }));
+          const casesP   = ctx.api('/cases',   { params: { limit: 5000 } }).catch(() => ({ data: [] }));
+          const [hearingsR, deadlinesR, tasksR, eventsR, clientsR, casesR] = await Promise.all(
+            [hearingsP, deadlinesP, tasksP, eventsP, clientsP, casesP]
+          );
+
+          // Build lookup maps.
+          const clientMap = new Map();
+          (clientsR.data || []).forEach((c) => {
+            const name = [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.name || c.email || '';
+            clientMap.set(c.id, name);
+          });
+          // cases: id -> { client_id, case_number, title }
+          const caseMap = new Map();
+          (casesR.data || []).forEach((c) => {
+            caseMap.set(c.id, {
+              client_id: c.client_id,
+              case_number: c.case_number || '',
+              case_title: c.title || ''
+            });
+          });
+          // Resolve a client name from either client_id or case_id.
+          function resolveClient(row) {
+            if (row.client_id && clientMap.has(row.client_id)) return clientMap.get(row.client_id);
+            if (row.case_id && caseMap.has(row.case_id)) {
+              const cs = caseMap.get(row.case_id);
+              if (cs.client_id && clientMap.has(cs.client_id)) return clientMap.get(cs.client_id);
+            }
+            return '';
+          }
+          function resolveCase(row) {
+            if (row.case_id && caseMap.has(row.case_id)) {
+              const cs = caseMap.get(row.case_id);
+              return cs.case_number ? `${cs.case_number} — ${cs.case_title}`.trim() : cs.case_title || '';
+            }
+            return '';
+          }
 
           const inRange = (d) => d && d >= from && d <= to;
           const HEARING_TYPE_AR = { initial: 'افتتاحية', follow_up: 'متابعة', evidence: 'إثبات', judgment: 'نطق بالحكم', other: 'أخرى' };
@@ -436,7 +476,8 @@
               title: h.title || `جلسة ${typeAr}`.trim(),
               start: d, end: d, allDay: false,
               type: typeAr, status: h.status || '', location: h.court_name || '',
-              description: h.description || '', id: h.id
+              description: h.description || '', id: h.id,
+              client: resolveClient(h), caseRef: resolveCase(h)
             });
           });
           (deadlinesR.data || []).forEach((dl) => {
@@ -445,7 +486,8 @@
               kind: 'deadline', kindLabel: 'موعد نهائي',
               title: dl.title, start: d, end: d, allDay: false,
               type: '', status: dl.status || '', location: '', priority: dl.priority || '',
-              description: dl.description || '', id: dl.id
+              description: dl.description || '', id: dl.id,
+              client: resolveClient(dl), caseRef: resolveCase(dl)
             });
           });
           (tasksR.data || []).forEach((t) => {
@@ -456,7 +498,8 @@
               kind: 'task', kindLabel: 'مهمة',
               title: t.title, start: d, end: d, allDay: t.due_date.length <= 10,
               type: '', status: t.status || '', location: '', priority: t.priority || '',
-              description: t.description || '', id: t.id
+              description: t.description || '', id: t.id,
+              client: resolveClient(t), caseRef: resolveCase(t)
             });
           });
           (eventsR || []).forEach((ev) => {
@@ -466,7 +509,8 @@
               kind: 'event', kindLabel: ev.event_type || 'حدث',
               title: ev.title, start: d, end: e, allDay: false,
               type: ev.event_type || '', status: '', location: ev.location || '',
-              description: ev.description || '', id: ev.id
+              description: ev.description || '', id: ev.id,
+              client: resolveClient(ev), caseRef: resolveCase(ev)
             });
           });
 
@@ -506,17 +550,130 @@
           return d ? d.toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) : '';
         }
         function downloadCSV(items, from, to) {
-          const header = ['النوع','العنوان','تاريخ البداية','تاريخ النهاية','يوم كامل','الفئة','الحالة','الأولوية','المكان','الوصف'];
+          const header = ['النوع','العنوان','اسم الموكل','القضية','تاريخ البداية','تاريخ النهاية','يوم كامل','الفئة','الحالة','الأولوية','المكان','الوصف'];
           const lines = [header.join(',')];
           items.forEach((i) => {
             lines.push([
-              i.kindLabel, i.title, fmtLocal(i.start), fmtLocal(i.end),
+              i.kindLabel, i.title, i.client || '', i.caseRef || '',
+              fmtLocal(i.start), fmtLocal(i.end),
               i.allDay ? 'نعم' : 'لا', i.type || '', i.status || '', i.priority || '',
               i.location || '', i.description || ''
             ].map(csvEscape).join(','));
           });
           // UTF-8 BOM so Excel detects encoding.
           triggerDownload(`mizan-calendar-${from}_${to}.csv`, '\uFEFF' + lines.join('\r\n'), 'text/csv');
+        }
+
+        // ---- Shared HTML renderer for PDF + Word ----
+        function escHtml(s) {
+          return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+          }[c]));
+        }
+        function renderReportHTML(items, from, to) {
+          const fromHuman = new Date(from).toLocaleDateString('ar-SA-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
+          const toHuman   = new Date(to).toLocaleDateString('ar-SA-u-nu-latn',   { year: 'numeric', month: 'long', day: 'numeric' });
+          const generated = new Date().toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' });
+
+          const rows = items.map((i, idx) => `
+            <tr>
+              <td>${idx + 1}</td>
+              <td>${escHtml(i.kindLabel)}</td>
+              <td>${escHtml(i.title)}</td>
+              <td>${escHtml(i.client || '—')}</td>
+              <td>${escHtml(i.caseRef || '—')}</td>
+              <td>${escHtml(fmtLocal(i.start))}</td>
+              <td>${escHtml(i.location || '—')}</td>
+              <td>${escHtml(i.status || '—')}</td>
+            </tr>`).join('');
+
+          return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>تقرير التقويم ${from} إلى ${to}</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  body { font-family: 'Tajawal', Arial, sans-serif; color: #111827; direction: rtl; }
+  h1 { color: #1a472a; margin: 0 0 4px; font-size: 20pt; }
+  .sub { color: #6b7280; margin: 0 0 14pt; font-size: 10pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  th, td { border: 1px solid #d1d5db; padding: 6pt 8pt; text-align: right; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 700; color: #374151; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .summary { margin: 10pt 0 14pt; padding: 8pt 12pt; background: #f9fafb; border-inline-start: 4px solid #d4af37; font-size: 10pt; }
+  .summary strong { color: #1a472a; }
+  .footer { margin-top: 14pt; text-align: center; color: #6b7280; font-size: 8.5pt; }
+  @media print { .btn-print { display: none !important; } }
+  .btn-print {
+    position: fixed; top: 12px; left: 12px;
+    padding: 8px 16px; background: #1a472a; color: #fff;
+    border: none; border-radius: 6px; cursor: pointer; font-family: inherit;
+  }
+</style>
+</head>
+<body>
+  <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  <h1>تقرير التقويم — ميزان</h1>
+  <p class="sub">
+    الفترة: من ${fromHuman} إلى ${toHuman}
+    &nbsp;•&nbsp; تاريخ التوليد: ${generated}
+  </p>
+  <div class="summary">
+    <strong>الإجمالي:</strong> ${items.length} عنصر
+    &nbsp;•&nbsp; الجلسات: ${items.filter(i => i.kind === 'hearing').length}
+    &nbsp;•&nbsp; المواعيد: ${items.filter(i => i.kind === 'deadline').length}
+    &nbsp;•&nbsp; المهام: ${items.filter(i => i.kind === 'task').length}
+    &nbsp;•&nbsp; الأحداث: ${items.filter(i => i.kind === 'event').length}
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:4%">#</th>
+        <th style="width:9%">النوع</th>
+        <th style="width:22%">العنوان</th>
+        <th style="width:14%">اسم الموكل</th>
+        <th style="width:16%">القضية</th>
+        <th style="width:13%">الموعد</th>
+        <th style="width:12%">المكان</th>
+        <th style="width:10%">الحالة</th>
+      </tr>
+    </thead>
+    <tbody>${rows || '<tr><td colspan="8" style="text-align:center;color:#6b7280">لا توجد بيانات</td></tr>'}</tbody>
+  </table>
+  <p class="footer">تم التوليد بواسطة نظام ميزان لإدارة المكاتب القانونية</p>
+</body>
+</html>`;
+        }
+
+        // Open the report in a new tab and auto-invoke the print dialog, so the
+        // user can "Save as PDF" from any modern browser without extra libraries.
+        function downloadPDF(items, from, to) {
+          const html = renderReportHTML(items, from, to);
+          const w = window.open('', '_blank');
+          if (!w) {
+            // Popup blocked — fall back to downloading the HTML file.
+            triggerDownload(`mizan-calendar-${from}_${to}.html`, html, 'text/html');
+            ctx.toast('السماح بالنوافذ المنبثقة مطلوب للطباعة — تم تنزيل ملف HTML بدلاً من ذلك', 'warning', 5000);
+            return;
+          }
+          w.document.open(); w.document.write(html); w.document.close();
+          // Auto-open print dialog once loaded (user picks "Save as PDF").
+          w.addEventListener('load', () => setTimeout(() => w.print(), 300));
+        }
+
+        // Word opens HTML files with .doc extension natively and preserves RTL,
+        // tables and Arabic text — no external library needed.
+        function downloadDOC(items, from, to) {
+          const body = renderReportHTML(items, from, to)
+            // Remove the print button from the Word version.
+            .replace(/<button class="btn-print"[\s\S]*?<\/button>\s*/, '');
+          // Wrap with Word-friendly MHTML header hints.
+          const doc = `<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+            ${body.substring(body.indexOf('<head>'))}
+            </html>`;
+          triggerDownload(`mizan-calendar-${from}_${to}.doc`, doc, 'application/msword');
         }
         function downloadJSON(items, from, to) {
           const payload = items.map((i) => ({
@@ -551,15 +708,21 @@
             const endProp = i.allDay
               ? `DTEND;VALUE=DATE:${icsDate(new Date(endDate.getTime() + 86400000), true)}`
               : `DTEND:${icsDate(endDate, false)}`;
+            // Build a rich description: client + case + original description (if any).
+            const descParts = [];
+            if (i.client)      descParts.push(`الموكل: ${i.client}`);
+            if (i.caseRef)     descParts.push(`القضية: ${i.caseRef}`);
+            if (i.description) descParts.push(i.description);
+            const desc = descParts.join('\n');
             lines.push(
               'BEGIN:VEVENT',
               `UID:${uid}`,
               `DTSTAMP:${now}`,
               startProp,
               endProp,
-              fold(`SUMMARY:${esc('[' + i.kindLabel + '] ' + i.title)}`),
-              i.location  ? fold(`LOCATION:${esc(i.location)}`) : null,
-              i.description ? fold(`DESCRIPTION:${esc(i.description)}`) : null,
+              fold(`SUMMARY:${esc('[' + i.kindLabel + '] ' + i.title + (i.client ? ' — ' + i.client : ''))}`),
+              i.location ? fold(`LOCATION:${esc(i.location)}`) : null,
+              desc       ? fold(`DESCRIPTION:${esc(desc)}`)    : null,
               'END:VEVENT'
             );
           });
