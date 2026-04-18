@@ -6,15 +6,29 @@
   <title>التقويم - ميزان</title>
   <link rel="stylesheet" href="../css/app-shell.css">
   <style>
-    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: #e5e7eb; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+    .cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      grid-auto-rows: 128px;   /* fixed row height so cells never grow */
+      gap: 4px; background: #e5e7eb; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;
+    }
+    .cal-weekdays {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+      background: #e5e7eb; border: 1px solid #e5e7eb; border-radius: 10px 10px 0 0;
+      border-bottom: 0; overflow: hidden;
+    }
+    .cal-grid { border-radius: 0 0 10px 10px; border-top: 0; }
     .cal-weekday { background: #f9fafb; padding: 10px; text-align: center; font-weight: 700; color: var(--muted); }
-    .cal-day { background: #fff; min-height: 110px; padding: 8px; position: relative; cursor: pointer; transition: background .1s; }
+    .cal-day {
+      background: #fff; padding: 8px; position: relative; cursor: pointer; transition: background .1s;
+      overflow: hidden;              /* clip extra events so the cell stays fixed-height */
+      display: flex; flex-direction: column; gap: 2px;
+    }
     .cal-day:hover { background: #eff6ff; }
     .cal-day.dim { background: #fafafa; color: var(--muted); cursor: default; }
     .cal-day.dim:hover { background: #fafafa; }
     .cal-day .num { font-weight: 700; font-size: .9rem; }
     .cal-day.today .num { color: var(--brand); background: var(--gold); border-radius: 999px; width: 26px; height: 26px; display: grid; place-items: center; }
-    .cal-event { color: #fff; padding: 2px 6px; border-radius: 4px; font-size: .75rem; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-event { color: #fff; padding: 2px 6px; border-radius: 4px; font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
     .cal-event.event    { background: #2563eb; }
     .cal-event.hearing  { background: #9333ea; }
     .cal-event.deadline { background: #dc2626; }
@@ -154,8 +168,10 @@
               <button class="btn btn-secondary btn-sm" id="nextM">التالي ▶</button>
               <h3>${MONTHS[m]} ${y}</h3>
             </div>
-            <div class="cal-grid">
+            <div class="cal-weekdays">
               ${WEEKDAYS.map(d => `<div class="cal-weekday">${d}</div>`).join('')}
+            </div>
+            <div class="cal-grid">
               ${cells.map(c => {
                 const list = !c.dim ? (byKey[c.key] || []) : [];
                 const previews = list.slice(0, 3).map(ev =>
