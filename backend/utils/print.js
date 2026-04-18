@@ -45,15 +45,16 @@ function formatArabicDate(v) {
 
 function formatMoney(n, currency = 'SAR') {
   const v = Number(n || 0);
-  try { return new Intl.NumberFormat('ar-SA', { style: 'currency', currency, maximumFractionDigits: 2 }).format(v); }
-  catch { return v.toLocaleString('ar-SA') + ' ر.س'; }
+  // Latin digits in Arabic layout: "1,234.50 ر.س"
+  try { return new Intl.NumberFormat('ar-SA-u-nu-latn', { style: 'currency', currency, maximumFractionDigits: 2 }).format(v); }
+  catch { return v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ر.س'; }
 }
 
 function renderInvoiceHTML(invoice, items = []) {
   const rows = items.map((it) => `
     <tr>
       <td>${esc(it.description)}</td>
-      <td>${Number(it.quantity || 0).toLocaleString('ar-SA')}</td>
+      <td>${Number(it.quantity || 0).toLocaleString('en-US')}</td>
       <td>${formatMoney(it.unit_price, invoice.currency)}</td>
       <td>${formatMoney(it.total_amount, invoice.currency)}</td>
     </tr>`).join('');

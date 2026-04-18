@@ -153,8 +153,10 @@
   }
   function fmtMoney(n, currency = 'SAR') {
     const v = Number(n || 0);
-    try { return new Intl.NumberFormat('ar-SA', { style: 'currency', currency, maximumFractionDigits: 2 }).format(v); }
-    catch { return v.toLocaleString('ar-SA') + ' ر.س'; }
+    // Use Arabic locale but force Latin (Western) digits via the 'nu-latn' extension,
+    // so amounts render as "1,234.50 ر.س" instead of "١٬٢٣٤٫٥٠ ر.س".
+    try { return new Intl.NumberFormat('ar-SA-u-nu-latn', { style: 'currency', currency, maximumFractionDigits: 2 }).format(v); }
+    catch { return v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ر.س'; }
   }
 
   // Hijri date: defaults to localStorage preference 'mizan_cal' ('gregorian' | 'hijri').
