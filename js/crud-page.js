@@ -71,7 +71,7 @@
           tbody.innerHTML = `<tr><td class="empty" colspan="${opts.columns.length + 1}">لا توجد نتائج</td></tr>`;
         } else {
           tbody.innerHTML = data.map(row => `
-            <tr data-id="${row.id}">
+            <tr data-id="${row.id}" class="crud-row">
               ${opts.columns.map(c => `<td>${c.render ? c.render(row, ctx) : esc(row[c.key])}</td>`).join('')}
               <td class="actions">
                 ${(opts.rowActions || []).map((a, i) => `<button class="btn btn-sm btn-secondary" data-action="custom" data-index="${i}">${esc(a.label)}</button>`).join('')}
@@ -79,6 +79,10 @@
                 <button class="btn btn-sm btn-danger" data-action="delete">حذف</button>
               </td>
             </tr>`).join('');
+          // Make rows look clickable
+          root.querySelectorAll('#crudTbody tr.crud-row').forEach((tr) => {
+            tr.style.cursor = 'pointer';
+          });
         }
         renderPagination(pagination);
       } catch (err) {
@@ -118,9 +122,18 @@
     root.querySelector('#crudAddBtn').addEventListener('click', () => openForm(null));
     root.querySelector('#crudTbody').addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-action]');
+      const tr = e.target.closest('tr.crud-row');
+      if (!btn && tr) {
+        // Row click (not on an action button) -> open detail view
+        const id = tr.dataset.id;
+        try {
+          const { data } = await api(`${opts.resource}/${id}`);
+          openDetail(data);
+        } catch (err) { toast(err.message, 'error'); }
+        return;
+      }
       if (!btn) return;
-      const tr = btn.closest('tr');
-      const id = tr.dataset.id;
+      const id = btn.closest('tr').dataset.id;
       if (btn.dataset.action === 'edit') {
         const { data } = await api(`${opts.resource}/${id}`);
         openForm(data);
@@ -134,6 +147,102 @@
         await action.onClick(row, ctx);
       }
     });
+
+    // ---- Detail view ----
+    async function openDetail(row) {
+      // Build label list from union of columns + form fields (forms have richer labels).
+      const formFields = opts.form
+        ? (typeof opts.form === 'function' ? await opts.form(ctx, row) : opts.form)
+        : [];
+      const byKey = new Map();
+      // Use column labels first (shorter), then fill in form-only fields.
+      (opts.columns || []).forEach(c => byKey.set(c.key, { key: c.key, label: c.label, render: c.render }));
+      formFields.forEach(f => {
+        if (!byKey.has(f.key)) byKey.set(f.key, { key: f.key, label: f.label, type: f.type, options: f.options });
+      });
+
+      // Hidden/internal fields we never want to show
+      const HIDE = new Set(['id','firm_id','deleted_at','password_hash','settings']);
+      const SYSTEM_DATE_KEYS = ['created_at','updated_at'];
+
+      // Resolve a value for display
+      function fmtValue(meta, value) {
+        if (value == null || value === '') return '—';
+        if (meta.render) {
+          try { return meta.render(row, ctx); } catch { /* fall through */ }
+        }
+        if (meta.options) {
+          const opt = meta.options.find(o => String(o.value) === String(value));
+          if (opt) return esc(opt.label);
+        }
+        if (meta.type === 'date' || /(_date|_at)$/.test(meta.key)) {
+          return esc(ctx.fmtDateSmart ? ctx.fmtDateSmart(value) : ctx.fmtDate(value));
+        }
+        if (meta.type === 'datetime-local') {
+          return esc(ctx.fmtDateTime(value));
+        }
+        if (meta.type === 'textarea' || (typeof value === 'string' && value.length > 80)) {
+          return `<div style="white-space:pre-wrap">${esc(value)}</div>`;
+        }
+        return esc(value);
+      }
+
+      const rows = [];
+      byKey.forEach((meta) => {
+        if (HIDE.has(meta.key)) return;
+        if (!(meta.key in row)) return;
+        rows.push(`
+          <div class="detail-row">
+            <div class="detail-label">${esc(meta.label || meta.key)}</div>
+            <div class="detail-value">${fmtValue(meta, row[meta.key])}</div>
+          </div>`);
+      });
+
+      // System timestamps at the end if present
+      SYSTEM_DATE_KEYS.forEach(k => {
+        if (row[k]) {
+          rows.push(`
+            <div class="detail-row sys">
+              <div class="detail-label">${k === 'created_at' ? 'أنشئ في' : 'آخر تحديث'}</div>
+              <div class="detail-value">${esc(ctx.fmtDateTime(row[k]))}</div>
+            </div>`);
+        }
+      });
+
+      // Pick a modal title: prefer title > name > first_name+last_name > first column value
+      const title = row.title
+        || row.name
+        || (row.first_name ? `${row.first_name} ${row.last_name || ''}`.trim() : null)
+        || row.invoice_number
+        || row.case_number
+        || (opts.columns[0] && row[opts.columns[0].key])
+        || 'التفاصيل';
+
+      const style = `
+        <style>
+          .detail-grid { display: grid; gap: 0; max-height: 60vh; overflow: auto; }
+          .detail-row { display: grid; grid-template-columns: 180px 1fr; gap: 16px; padding: 10px 4px; border-bottom: 1px solid var(--border); }
+          .detail-row:last-child { border-bottom: 0; }
+          .detail-label { color: var(--muted); font-weight: 600; font-size: .9rem; }
+          .detail-value { color: #111827; word-break: break-word; }
+          .detail-row.sys { background: #fafafa; }
+          @media (max-width: 600px) {
+            .detail-row { grid-template-columns: 1fr; gap: 2px; }
+          }
+        </style>`;
+      const contentHTML = `${style}<div class="detail-grid">${rows.join('')}</div>`;
+
+      openModal({
+        title: esc(title),
+        contentHTML,
+        okText: 'تعديل',
+        cancelText: 'إغلاق',
+        onOk: async () => {
+          openForm(row);
+          return true;
+        }
+      });
+    }
 
     async function openForm(existing) {
       const values = existing || {};
