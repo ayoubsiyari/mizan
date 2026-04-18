@@ -98,7 +98,10 @@
         root.innerHTML = `
           <div class="page-header">
             <h2 class="page-title">التقويم</h2>
-            <button class="btn btn-primary" id="addEvt">+ إضافة حدث</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary" id="exportBtn">⬇ تصدير</button>
+              <button class="btn btn-primary" id="addEvt">+ إضافة حدث</button>
+            </div>
           </div>
           <div class="card" id="calHost"></div>`;
 
@@ -353,6 +356,217 @@
         }
 
         root.querySelector('#addEvt').addEventListener('click', () => openAddEvent());
+        root.querySelector('#exportBtn').addEventListener('click', () => openExportModal());
+
+        // ---- Export: lets user pick a date range and format, then downloads ----
+        function openExportModal() {
+          const today = new Date();
+          const first = new Date(today.getFullYear(), today.getMonth(), 1);
+          const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          const fromDefault = dateKey(first);
+          const toDefault = dateKey(last);
+
+          ctx.openModal({
+            title: 'تصدير التقويم',
+            contentHTML: `
+              <form id="expForm" class="form-grid" onsubmit="event.preventDefault()">
+                <div class="form-field"><label>من تاريخ</label><input type="date" name="from" value="${fromDefault}" required></div>
+                <div class="form-field"><label>إلى تاريخ</label><input type="date" name="to" value="${toDefault}" required></div>
+                <div class="form-field full"><label>تضمين</label>
+                  <div style="display:flex;gap:14px;flex-wrap:wrap;padding-top:4px">
+                    <label style="font-weight:400"><input type="checkbox" name="inc_hearing"  checked> الجلسات</label>
+                    <label style="font-weight:400"><input type="checkbox" name="inc_deadline" checked> المواعيد النهائية</label>
+                    <label style="font-weight:400"><input type="checkbox" name="inc_task"     checked> المهام</label>
+                    <label style="font-weight:400"><input type="checkbox" name="inc_event"    checked> الأحداث</label>
+                  </div>
+                </div>
+                <div class="form-field full"><label>الصيغة</label>
+                  <select name="format">
+                    <option value="csv">CSV (Excel)</option>
+                    <option value="ics">ICS (تقويم جوجل / آيفون)</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </div>
+              </form>`,
+            okText: 'تنزيل',
+            onOk: async (body) => {
+              const f = body.querySelector('#expForm');
+              const fromStr = f.from.value, toStr = f.to.value;
+              if (!fromStr || !toStr) { ctx.toast('حدد تاريخ البداية والنهاية', 'error'); return false; }
+              const from = new Date(fromStr + 'T00:00:00');
+              const to = new Date(toStr + 'T23:59:59');
+              if (to < from) { ctx.toast('تاريخ النهاية قبل البداية', 'error'); return false; }
+
+              const kinds = {
+                hearing: f.inc_hearing.checked, deadline: f.inc_deadline.checked,
+                task: f.inc_task.checked, event: f.inc_event.checked
+              };
+              try {
+                const items = await collectRange(from, to, kinds);
+                if (!items.length) { ctx.toast('لا توجد بيانات في هذا النطاق', 'warning'); return false; }
+                const fmt = f.format.value;
+                if (fmt === 'csv')      downloadCSV(items, fromStr, toStr);
+                else if (fmt === 'ics') downloadICS(items, fromStr, toStr);
+                else                    downloadJSON(items, fromStr, toStr);
+                ctx.toast(`تم التصدير (${items.length} عنصر)`, 'success');
+                return true;
+              } catch (err) { ctx.toast(err.message, 'error'); return false; }
+            }
+          });
+        }
+
+        async function collectRange(from, to, kinds) {
+          // Fetch lists only for selected kinds.
+          const hearingsP  = kinds.hearing  ? ctx.api('/hearings',  { params: { limit: 2000 } }).catch(() => ({ data: [] })) : { data: [] };
+          const deadlinesP = kinds.deadline ? ctx.api('/deadlines', { params: { limit: 2000 } }).catch(() => ({ data: [] })) : { data: [] };
+          const tasksP     = kinds.task     ? ctx.api('/tasks',     { params: { limit: 2000 } }).catch(() => ({ data: [] })) : { data: [] };
+          // /calendar/month is per-month; iterate months in range.
+          const eventsP = kinds.event ? fetchEventsRange(from, to) : Promise.resolve([]);
+          const [hearingsR, deadlinesR, tasksR, eventsR] = await Promise.all([hearingsP, deadlinesP, tasksP, eventsP]);
+
+          const inRange = (d) => d && d >= from && d <= to;
+          const HEARING_TYPE_AR = { initial: 'افتتاحية', follow_up: 'متابعة', evidence: 'إثبات', judgment: 'نطق بالحكم', other: 'أخرى' };
+          const out = [];
+
+          (hearingsR.data || []).forEach((h) => {
+            const d = parseTs(h.scheduled_at); if (!inRange(d)) return;
+            const typeAr = HEARING_TYPE_AR[h.hearing_type] || h.hearing_type || '';
+            out.push({
+              kind: 'hearing', kindLabel: 'جلسة',
+              title: h.title || `جلسة ${typeAr}`.trim(),
+              start: d, end: d, allDay: false,
+              type: typeAr, status: h.status || '', location: h.court_name || '',
+              description: h.description || '', id: h.id
+            });
+          });
+          (deadlinesR.data || []).forEach((dl) => {
+            const d = parseTs(dl.due_at); if (!inRange(d)) return;
+            out.push({
+              kind: 'deadline', kindLabel: 'موعد نهائي',
+              title: dl.title, start: d, end: d, allDay: false,
+              type: '', status: dl.status || '', location: '', priority: dl.priority || '',
+              description: dl.description || '', id: dl.id
+            });
+          });
+          (tasksR.data || []).forEach((t) => {
+            if (!t.due_date) return;
+            const d = parseTs(t.due_date.length <= 10 ? t.due_date + 'T00:00:00' : t.due_date);
+            if (!inRange(d)) return;
+            out.push({
+              kind: 'task', kindLabel: 'مهمة',
+              title: t.title, start: d, end: d, allDay: t.due_date.length <= 10,
+              type: '', status: t.status || '', location: '', priority: t.priority || '',
+              description: t.description || '', id: t.id
+            });
+          });
+          (eventsR || []).forEach((ev) => {
+            const d = parseTs(ev.start_time); if (!inRange(d)) return;
+            const e = parseTs(ev.end_time) || d;
+            out.push({
+              kind: 'event', kindLabel: ev.event_type || 'حدث',
+              title: ev.title, start: d, end: e, allDay: false,
+              type: ev.event_type || '', status: '', location: ev.location || '',
+              description: ev.description || '', id: ev.id
+            });
+          });
+
+          out.sort((a, b) => a.start - b.start);
+          return out;
+        }
+
+        async function fetchEventsRange(from, to) {
+          const months = [];
+          const cur = new Date(from.getFullYear(), from.getMonth(), 1);
+          while (cur <= to) {
+            months.push({ year: cur.getFullYear(), month: cur.getMonth() + 1 });
+            cur.setMonth(cur.getMonth() + 1);
+          }
+          const results = await Promise.all(months.map(({ year, month }) =>
+            ctx.api('/calendar/month', { params: { year, month } }).catch(() => ({ data: [] }))
+          ));
+          return results.flatMap(r => r.data || []);
+        }
+
+        // ---- Download helpers ----
+        function triggerDownload(filename, content, mime) {
+          // Prepend UTF-8 BOM for CSV so Excel opens Arabic correctly.
+          const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 500);
+        }
+        function csvEscape(v) {
+          if (v == null) return '';
+          const s = String(v).replace(/"/g, '""');
+          return /[",\n\r]/.test(s) ? `"${s}"` : s;
+        }
+        function fmtLocal(d) {
+          return d ? d.toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        }
+        function downloadCSV(items, from, to) {
+          const header = ['النوع','العنوان','تاريخ البداية','تاريخ النهاية','يوم كامل','الفئة','الحالة','الأولوية','المكان','الوصف'];
+          const lines = [header.join(',')];
+          items.forEach((i) => {
+            lines.push([
+              i.kindLabel, i.title, fmtLocal(i.start), fmtLocal(i.end),
+              i.allDay ? 'نعم' : 'لا', i.type || '', i.status || '', i.priority || '',
+              i.location || '', i.description || ''
+            ].map(csvEscape).join(','));
+          });
+          // UTF-8 BOM so Excel detects encoding.
+          triggerDownload(`mizan-calendar-${from}_${to}.csv`, '\uFEFF' + lines.join('\r\n'), 'text/csv');
+        }
+        function downloadJSON(items, from, to) {
+          const payload = items.map((i) => ({
+            ...i,
+            start: i.start.toISOString(),
+            end: i.end.toISOString()
+          }));
+          triggerDownload(`mizan-calendar-${from}_${to}.json`, JSON.stringify(payload, null, 2), 'application/json');
+        }
+        function downloadICS(items, from, to) {
+          // Minimal RFC 5545 VCALENDAR. Uses UTC times (Z).
+          const icsDate = (d, allDay) => allDay
+            ? d.toISOString().slice(0, 10).replace(/-/g, '')
+            : d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+          const fold = (line) => line.match(/.{1,74}/g).join('\r\n ');
+          const esc = (s) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+          const now = icsDate(new Date(), false);
+
+          const lines = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//Mizan Law//Calendar Export//AR',
+            'CALSCALE:GREGORIAN',
+          ];
+          items.forEach((i, idx) => {
+            const uid = `${i.kind}-${i.id || idx}-${Date.now()}@mizan-law`;
+            const startProp = i.allDay
+              ? `DTSTART;VALUE=DATE:${icsDate(i.start, true)}`
+              : `DTSTART:${icsDate(i.start, false)}`;
+            // For non-all-day single-point items (deadline/task), set end = start.
+            const endDate = i.end && i.end > i.start ? i.end : i.start;
+            const endProp = i.allDay
+              ? `DTEND;VALUE=DATE:${icsDate(new Date(endDate.getTime() + 86400000), true)}`
+              : `DTEND:${icsDate(endDate, false)}`;
+            lines.push(
+              'BEGIN:VEVENT',
+              `UID:${uid}`,
+              `DTSTAMP:${now}`,
+              startProp,
+              endProp,
+              fold(`SUMMARY:${esc('[' + i.kindLabel + '] ' + i.title)}`),
+              i.location  ? fold(`LOCATION:${esc(i.location)}`) : null,
+              i.description ? fold(`DESCRIPTION:${esc(i.description)}`) : null,
+              'END:VEVENT'
+            );
+          });
+          lines.push('END:VCALENDAR');
+          const content = lines.filter(Boolean).join('\r\n');
+          triggerDownload(`mizan-calendar-${from}_${to}.ics`, content, 'text/calendar');
+        }
 
         draw();
       }
