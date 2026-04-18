@@ -267,6 +267,12 @@
           } catch (err) { toast(err.message, 'error'); return false; }
         }
       });
+      // Optional hook: lets pages add interactive behaviour (e.g. dependent dropdowns)
+      if (typeof opts.onFormReady === 'function') {
+        const form = modal.body.querySelector('#crudForm');
+        try { await opts.onFormReady(form, ctx, existing || null); }
+        catch (err) { console.error('onFormReady error', err); }
+      }
     }
 
     function fieldHTML(f, value) {

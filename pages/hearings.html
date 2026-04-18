@@ -52,11 +52,31 @@
             { key: 'judge_name', label: 'القاضي' },
             { key: 'status', label: 'الحالة', render: (r) => `<span class="badge ${r.status}">${(STATUS.find(s => s.value === r.status) || {}).label}</span>` }
           ],
-          form: async () => {
-            const { data: cases } = await ctx.api('/cases', { params: { limit: 200 } });
+          form: async (_ctx, existing) => {
+            const [{ data: clients }, { data: cases }] = await Promise.all([
+              ctx.api('/clients', { params: { limit: 500 } }),
+              ctx.api('/cases', { params: { limit: 500 } })
+            ]);
+            // When editing, pre-fill client_id from the hearing's case.
+            let initialClientId = '';
+            if (existing && existing.case_id) {
+              const cs = cases.find(c => c.id === existing.case_id);
+              if (cs) initialClientId = cs.client_id || '';
+            }
+            // Stash datasets on the ctx for onFormReady.
+            ctx._hearingClients = clients;
+            ctx._hearingCases = cases;
             return [
+              { key: 'client_id', label: 'الموكل', type: 'select', required: true,
+                options: [{ value: '', label: '-- اختر الموكل --' }, ...clients.map(c => ({
+                  value: c.id,
+                  label: [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.email || c.id
+                }))],
+                // Used by openForm to pre-select the derived client on edit.
+                _initialValue: initialClientId
+              },
               { key: 'case_id', label: 'القضية', type: 'select', required: true,
-                options: [{ value: '', label: '--' }, ...cases.map(c => ({ value: c.id, label: `${c.case_number} - ${c.title}` }))] },
+                options: [{ value: '', label: '-- اختر الموكل أولاً --' }] },
               { key: 'hearing_type', label: 'النوع', type: 'select', required: true, options: TYPES },
               { key: 'title', label: 'عنوان الجلسة', type: 'text' },
               { key: 'scheduled_at', label: 'موعد الجلسة', type: 'datetime-local', required: true },
@@ -69,6 +89,41 @@
               { key: 'notes', label: 'ملاحظات', type: 'textarea', width: 'full' },
               { key: 'outcome', label: 'النتيجة', type: 'textarea', width: 'full' }
             ];
+          },
+          // Strip the synthetic client_id before sending to the API.
+          onBeforeSubmit: (data) => { delete data.client_id; return data; },
+          // Wire dependent dropdowns: client → cases.
+          onFormReady: (form, _ctx, existing) => {
+            const clientSel = form.elements.client_id;
+            const caseSel   = form.elements.case_id;
+            const cases     = ctx._hearingCases || [];
+
+            const fillCases = (clientId, preselectCaseId) => {
+              caseSel.innerHTML = '';
+              if (!clientId) {
+                caseSel.innerHTML = '<option value="">-- اختر الموكل أولاً --</option>';
+                return;
+              }
+              const filtered = cases.filter(c => c.client_id === clientId);
+              if (!filtered.length) {
+                caseSel.innerHTML = '<option value="">لا توجد قضايا لهذا الموكل</option>';
+                return;
+              }
+              const opts = ['<option value="">--</option>'].concat(
+                filtered.map(c => `<option value="${c.id}" ${preselectCaseId === c.id ? 'selected' : ''}>${c.case_number} - ${c.title}</option>`)
+              );
+              caseSel.innerHTML = opts.join('');
+            };
+
+            // Preselect client when editing.
+            if (existing && existing.case_id) {
+              const cs = cases.find(c => c.id === existing.case_id);
+              if (cs && cs.client_id) {
+                clientSel.value = cs.client_id;
+                fillCases(cs.client_id, existing.case_id);
+              }
+            }
+            clientSel.addEventListener('change', () => fillCases(clientSel.value, null));
           }
         });
       }
