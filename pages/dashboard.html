@@ -87,12 +87,12 @@
                 const d = new Date(h.scheduled_at);
                 return `<div class="event-row">
                   <div class="event-date">
-                    <div class="day">${d.toLocaleDateString('ar-SA-u-ca-gregory', { day: '2-digit' })}</div>
-                    <div class="mon">${d.toLocaleDateString('ar-SA-u-ca-gregory', { month: 'short' })}</div>
+                    <div class="day">${d.toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: '2-digit' })}</div>
+                    <div class="mon">${d.toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'short' })}</div>
                   </div>
                   <div style="flex:1">
                     <div style="font-weight:600">${ctx.esc(h.title || 'جلسة')}</div>
-                    <div style="color:var(--muted);font-size:.85rem">${d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })} ${h.court_name ? '• ' + ctx.esc(h.court_name) : ''}</div>
+                    <div style="color:var(--muted);font-size:.85rem">${d.toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' })} ${h.court_name ? '• ' + ctx.esc(h.court_name) : ''}</div>
                   </div>
                 </div>`;
               }).join('')

@@ -39,7 +39,7 @@ function formatArabicDate(v) {
   if (!v) return '';
   try {
     const d = new Date(v.includes(' ') ? v.replace(' ', 'T') + 'Z' : v);
-    return d.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' });
+    return d.toLocaleDateString('ar-SA-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
   } catch { return esc(v); }
 }
 

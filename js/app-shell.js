@@ -144,12 +144,12 @@
   }
   function fmtDate(v) {
     if (!v) return '';
-    try { return new Date(v.replace(' ', 'T') + (v.includes('Z') ? '' : 'Z')).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' }); }
+    try { return new Date(v.replace(' ', 'T') + (v.includes('Z') ? '' : 'Z')).toLocaleDateString('ar-SA-u-nu-latn', { year: 'numeric', month: 'short', day: 'numeric' }); }
     catch { return esc(v); }
   }
   function fmtDateTime(v) {
     if (!v) return '';
-    try { return new Date(v.replace(' ', 'T') + (v.includes('Z') ? '' : 'Z')).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }); }
+    try { return new Date(v.replace(' ', 'T') + (v.includes('Z') ? '' : 'Z')).toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' }); }
     catch { return esc(v); }
   }
   function fmtMoney(n, currency = 'SAR') {
@@ -167,7 +167,7 @@
     if (!v) return '';
     try {
       const d = new Date(v.replace(' ', 'T') + (v.includes('Z') ? '' : 'Z'));
-      return d.toLocaleDateString('ar-SA-u-ca-islamic-umalqura', opts) + ' هـ';
+      return d.toLocaleDateString('ar-SA-u-ca-islamic-umalqura-nu-latn', opts) + ' هـ';
     } catch { return esc(v); }
   }
   function fmtDateSmart(v) {

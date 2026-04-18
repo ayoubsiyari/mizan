@@ -180,7 +180,7 @@
                     contentHTML: `
                       <p>أرسل هذا الرابط إلى الموكل. صالح لمدة 72 ساعة ويُستخدم مرة واحدة.</p>
                       <div class="form-field full"><label>الرابط</label><input type="text" readonly value="${ctx.esc(data.url)}" onclick="this.select()"></div>
-                      <p style="color:var(--muted);font-size:.85rem">ينتهي: ${new Date(data.expires_at).toLocaleString('ar-SA')}</p>`,
+                      <p style="color:var(--muted);font-size:.85rem">ينتهي: ${new Date(data.expires_at).toLocaleString('ar-SA-u-nu-latn')}</p>`,
                     okText: 'نسخ الرابط',
                     onOk: async () => {
                       try { await navigator.clipboard.writeText(data.url); ctx.toast('تم النسخ', 'success'); } catch {}

@@ -49,7 +49,7 @@ async function scanDeadlines() {
         await notify(
           d.firm_id, d.assigned_to || d.created_by,
           `⏰ موعد نهائي قادم: ${d.title}`,
-          `${deltaDays === 0 ? 'اليوم' : `خلال ${deltaDays} ${deltaDays === 1 ? 'يوم' : 'أيام'}`} — ${new Date(due).toLocaleDateString('ar-SA')}`,
+          `${deltaDays === 0 ? 'اليوم' : `خلال ${deltaDays} ${deltaDays === 1 ? 'يوم' : 'أيام'}`} — ${new Date(due).toLocaleDateString('ar-SA-u-nu-latn')}`,
           { deadlineId: d.id, caseId: d.case_id }, 'warning'
         );
         await run(`UPDATE deadlines SET last_reminder_at = datetime('now') WHERE id = ?`, [d.id]);
@@ -73,7 +73,7 @@ async function scanHearings() {
     await notify(
       h.firm_id, userId,
       `🏛️ جلسة قادمة: ${h.title || 'جلسة'}`,
-      `${when.toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' })}${h.court_name ? ' • ' + h.court_name : ''}`,
+      `${when.toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' })}${h.court_name ? ' • ' + h.court_name : ''}`,
       { hearingId: h.id, caseId: h.case_id }, 'info'
     );
   }

@@ -91,7 +91,7 @@
         let visitors = [];
 
         function fmtTime(ts) {
-          try { return new Date(ts.replace(' ', 'T') + (ts.includes('Z') ? '' : 'Z')).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }); }
+          try { return new Date(ts.replace(' ', 'T') + (ts.includes('Z') ? '' : 'Z')).toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' }); }
           catch { return ts; }
         }
 
