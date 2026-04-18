@@ -517,7 +517,22 @@
 
           const inRange = (d) => d && d >= from && d <= to;
           const HEARING_TYPE_AR = { initial: 'افتتاحية', follow_up: 'متابعة', evidence: 'إثبات', judgment: 'نطق بالحكم', other: 'أخرى' };
+          const STATUS_AR = {
+            scheduled: 'مجدولة', in_progress: 'قيد التنفيذ', completed: 'مكتملة',
+            cancelled: 'ملغاة', postponed: 'مؤجلة', pending: 'معلقة',
+            open: 'مفتوح', missed: 'فائت', draft: 'مسودة', sent: 'مُرسلة',
+            paid: 'مدفوعة', overdue: 'متأخرة', active: 'نشطة', closed: 'مغلقة',
+            archived: 'مؤرشفة', suspended: 'موقوفة',
+            waiting: 'بانتظار', in_meeting: 'في اجتماع', done: 'منتهي', no_show: 'لم يحضر',
+            pending_signature: 'بانتظار التوقيع', signed: 'موقّع',
+            expired: 'منتهي الصلاحية', terminated: 'مُنهى', template: 'قالب'
+          };
+          const PRIORITY_AR = { low: 'منخفضة', medium: 'متوسطة', high: 'عالية', urgent: 'عاجلة' };
+          const trStatus   = (s) => s ? (STATUS_AR[s]   || s) : '';
+          const trPriority = (p) => p ? (PRIORITY_AR[p] || p) : '';
           const out = [];
+
+          const EVENT_TYPE_AR = { meeting: 'اجتماع', deadline: 'موعد نهائي', reminder: 'تذكير', task: 'مهمة', other: 'حدث' };
 
           (hearingsR.data || []).forEach((h) => {
             const d = parseTs(h.scheduled_at); if (!inRange(d)) return;
@@ -526,7 +541,7 @@
               kind: 'hearing', kindLabel: 'جلسة',
               title: h.title || `جلسة ${typeAr}`.trim(),
               start: d, end: d, allDay: false,
-              type: typeAr, status: h.status || '', location: h.court_name || '',
+              type: typeAr, status: trStatus(h.status), location: h.court_name || '',
               description: h.description || '', id: h.id,
               client: resolveClient(h), caseRef: resolveCase(h)
             });
@@ -536,7 +551,7 @@
             out.push({
               kind: 'deadline', kindLabel: 'موعد نهائي',
               title: dl.title, start: d, end: d, allDay: false,
-              type: '', status: dl.status || '', location: '', priority: dl.priority || '',
+              type: '', status: trStatus(dl.status), location: '', priority: trPriority(dl.priority),
               description: dl.description || '', id: dl.id,
               client: resolveClient(dl), caseRef: resolveCase(dl)
             });
@@ -548,7 +563,7 @@
             out.push({
               kind: 'task', kindLabel: 'مهمة',
               title: t.title, start: d, end: d, allDay: t.due_date.length <= 10,
-              type: '', status: t.status || '', location: '', priority: t.priority || '',
+              type: '', status: trStatus(t.status), location: '', priority: trPriority(t.priority),
               description: t.description || '', id: t.id,
               client: resolveClient(t), caseRef: resolveCase(t)
             });
@@ -556,10 +571,11 @@
           (eventsR || []).forEach((ev) => {
             const d = parseTs(ev.start_time); if (!inRange(d)) return;
             const e = parseTs(ev.end_time) || d;
+            const typeAr = EVENT_TYPE_AR[ev.event_type] || ev.event_type || 'حدث';
             out.push({
-              kind: 'event', kindLabel: ev.event_type || 'حدث',
+              kind: 'event', kindLabel: typeAr,
               title: ev.title, start: d, end: e, allDay: false,
-              type: ev.event_type || '', status: '', location: ev.location || '',
+              type: typeAr, status: trStatus(ev.status), location: ev.location || '',
               description: ev.description || '', id: ev.id,
               client: resolveClient(ev), caseRef: resolveCase(ev)
             });
