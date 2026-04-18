@@ -101,7 +101,7 @@
         <div class="body"></div>
         <footer>
           <button class="btn btn-primary ok" type="button">${okText}</button>
-          <button class="btn btn-secondary cancel" type="button">${cancelText}</button>
+          ${cancelText ? `<button class="btn btn-secondary cancel" type="button">${cancelText}</button>` : ''}
         </footer>
       </div>`;
     document.body.appendChild(backdrop);
@@ -111,7 +111,8 @@
 
     const close = () => backdrop.remove();
     backdrop.querySelector('.close').addEventListener('click', close);
-    backdrop.querySelector('.cancel').addEventListener('click', close);
+    const cancelBtn = backdrop.querySelector('.cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', close);
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
     backdrop.querySelector('.ok').addEventListener('click', async () => {
       try {

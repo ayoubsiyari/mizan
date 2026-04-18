@@ -8,16 +8,41 @@
   <style>
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: #e5e7eb; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
     .cal-weekday { background: #f9fafb; padding: 10px; text-align: center; font-weight: 700; color: var(--muted); }
-    .cal-day { background: #fff; min-height: 100px; padding: 8px; position: relative; cursor: pointer; transition: background .1s; }
-    .cal-day:hover { background: #f9fafb; }
-    .cal-day.dim { background: #fafafa; color: var(--muted); }
+    .cal-day { background: #fff; min-height: 110px; padding: 8px; position: relative; cursor: pointer; transition: background .1s; }
+    .cal-day:hover { background: #eff6ff; }
+    .cal-day.dim { background: #fafafa; color: var(--muted); cursor: default; }
+    .cal-day.dim:hover { background: #fafafa; }
     .cal-day .num { font-weight: 700; font-size: .9rem; }
     .cal-day.today .num { color: var(--brand); background: var(--gold); border-radius: 999px; width: 26px; height: 26px; display: grid; place-items: center; }
-    .cal-event { background: var(--brand); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: .75rem; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cal-event.hearing { background: var(--warning); }
-    .cal-event.deadline { background: var(--danger); }
+    .cal-event { color: #fff; padding: 2px 6px; border-radius: 4px; font-size: .75rem; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-event.event    { background: #2563eb; }
+    .cal-event.hearing  { background: #9333ea; }
+    .cal-event.deadline { background: #dc2626; }
+    .cal-event.task     { background: #0ea5e9; }
+    .cal-event.more { background: #6b7280; font-weight: 600; }
     .cal-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
     .cal-toolbar h3 { margin: 0 auto; color: var(--brand); }
+
+    /* Day detail modal content */
+    .day-section { margin-bottom: 16px; }
+    .day-section h4 { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; font-size: .95rem; }
+    .day-section h4::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--c, #6b7280); }
+    .day-section.event    { --c: #2563eb; }
+    .day-section.hearing  { --c: #9333ea; }
+    .day-section.deadline { --c: #dc2626; }
+    .day-section.task     { --c: #0ea5e9; }
+    .day-row {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;
+      background: var(--card); border-inline-start: 3px solid var(--c, var(--border));
+    }
+    .day-row .t { font-weight: 600; color: #374151; flex-shrink: 0; min-width: 56px; }
+    .day-row .body { flex: 1; min-width: 0; }
+    .day-row .title { font-weight: 600; }
+    .day-row .meta { color: var(--muted); font-size: .85rem; margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .day-empty { padding: 30px; text-align: center; color: var(--muted); }
+    .btn-link { color: var(--brand); text-decoration: none; font-size: .85rem; font-weight: 600; }
+    .btn-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -38,6 +63,15 @@
           </div>
           <div class="card" id="calHost"></div>`;
 
+        // ---- Helpers ----
+        const pad = (n) => String(n).padStart(2, '0');
+        const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const parseTs = (s) => s ? new Date(s.includes('T') || s.includes('Z') ? s : s.replace(' ', 'T') + 'Z') : null;
+        const timeStr = (d) => d ? d.toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' }) : '';
+
+        // Cache of current month data so day click can render without re-fetching
+        let monthData = { byKey: {}, month: null };
+
         async function draw() {
           const y = current.getFullYear(), m = current.getMonth();
           const first = new Date(y, m, 1);
@@ -45,32 +79,68 @@
           const daysInMonth = new Date(y, m + 1, 0).getDate();
           const daysInPrev = new Date(y, m, 0).getDate();
 
-          // Fetch events for this month
-          const { data: events = [] } = await ctx.api('/calendar/month', { params: { year: y, month: m + 1 } });
-          const { data: hearings = [] } = await ctx.api('/hearings', { params: { limit: 500 } });
-          const hearingEvents = hearings.filter(h => {
-            const d = new Date(h.scheduled_at);
-            return d.getFullYear() === y && d.getMonth() === m;
+          // Month range (local)
+          const monthStart = new Date(y, m, 1, 0, 0, 0);
+          const monthEnd = new Date(y, m + 1, 0, 23, 59, 59);
+          const inMonth = (d) => d && d >= monthStart && d <= monthEnd;
+
+          // Fetch everything in parallel
+          const [eventsRes, hearingsRes, deadlinesRes, tasksRes] = await Promise.all([
+            ctx.api('/calendar/month', { params: { year: y, month: m + 1 } }).catch(() => ({ data: [] })),
+            ctx.api('/hearings', { params: { limit: 500 } }).catch(() => ({ data: [] })),
+            ctx.api('/deadlines', { params: { limit: 500 } }).catch(() => ({ data: [] })),
+            ctx.api('/tasks', { params: { limit: 500 } }).catch(() => ({ data: [] }))
+          ]);
+
+          const byKey = {};
+          const push = (key, item) => { (byKey[key] = byKey[key] || []).push(item); };
+
+          (eventsRes.data || []).forEach((ev) => {
+            const d = parseTs(ev.start_time); if (!inMonth(d)) return;
+            push(dateKey(d), {
+              kind: ev.event_type === 'deadline' ? 'deadline' : ev.event_type === 'task' ? 'task' : 'event',
+              title: ev.title, time: timeStr(d), location: ev.location, id: ev.id, source: 'calendar'
+            });
+          });
+          (hearingsRes.data || []).forEach((h) => {
+            const d = parseTs(h.scheduled_at); if (!inMonth(d)) return;
+            push(dateKey(d), {
+              kind: 'hearing',
+              title: h.title || `جلسة (${h.hearing_type || ''})`,
+              time: timeStr(d), location: h.court_name, status: h.status,
+              href: `cases.html?focus=${h.case_id}`, source: 'hearing'
+            });
+          });
+          (deadlinesRes.data || []).forEach((dl) => {
+            const d = parseTs(dl.due_at); if (!inMonth(d)) return;
+            push(dateKey(d), {
+              kind: 'deadline', title: dl.title, time: timeStr(d),
+              priority: dl.priority, status: dl.status, id: dl.id,
+              href: 'deadlines.html', source: 'deadline'
+            });
+          });
+          (tasksRes.data || []).forEach((t) => {
+            if (!t.due_date) return;
+            // due_date may be DATE or DATETIME — normalise to local midnight if pure date
+            const d = parseTs(t.due_date.length <= 10 ? t.due_date + 'T00:00:00' : t.due_date);
+            if (!inMonth(d)) return;
+            push(dateKey(d), {
+              kind: 'task', title: t.title, time: t.due_date.length <= 10 ? '' : timeStr(d),
+              priority: t.priority, status: t.status, id: t.id,
+              href: 'tasks.html', source: 'task'
+            });
           });
 
-          const byDay = {};
-          events.forEach((ev) => {
-            const d = new Date(ev.start_time);
-            const key = d.getDate();
-            (byDay[key] = byDay[key] || []).push({ kind: ev.event_type || 'event', title: ev.title, id: ev.id });
-          });
-          hearingEvents.forEach((h) => {
-            const d = new Date(h.scheduled_at);
-            const key = d.getDate();
-            (byDay[key] = byDay[key] || []).push({ kind: 'hearing', title: h.title || 'جلسة: ' + (h.court_name || ''), id: h.id });
-          });
+          // Sort each day's list by time (items without time go first)
+          Object.values(byKey).forEach(arr => arr.sort((a, b) => (a.time || '').localeCompare(b.time || '')));
+          monthData = { byKey, month: { y, m } };
 
           const cells = [];
           for (let i = 0; i < startDow; i++) {
             const d = daysInPrev - (startDow - i - 1);
             cells.push({ day: d, dim: true });
           }
-          for (let i = 1; i <= daysInMonth; i++) cells.push({ day: i });
+          for (let i = 1; i <= daysInMonth; i++) cells.push({ day: i, key: `${y}-${pad(m + 1)}-${pad(i)}` });
           while (cells.length % 7 !== 0) cells.push({ day: cells.length - startDow - daysInMonth + 1, dim: true });
 
           const today = new Date();
@@ -86,25 +156,106 @@
             </div>
             <div class="cal-grid">
               ${WEEKDAYS.map(d => `<div class="cal-weekday">${d}</div>`).join('')}
-              ${cells.map(c => `
-                <div class="cal-day ${c.dim ? 'dim' : ''} ${!c.dim && isToday(c.day) ? 'today' : ''}" data-day="${!c.dim ? c.day : ''}">
-                  <span class="num">${c.day}</span>
-                  ${!c.dim && byDay[c.day] ? byDay[c.day].slice(0, 3).map(ev => `<div class="cal-event ${ev.kind}" title="${ctx.esc(ev.title)}">${ctx.esc(ev.title)}</div>`).join('') : ''}
-                  ${!c.dim && byDay[c.day] && byDay[c.day].length > 3 ? `<div class="cal-event">+${byDay[c.day].length - 3}</div>` : ''}
-                </div>`).join('')}
+              ${cells.map(c => {
+                const list = !c.dim ? (byKey[c.key] || []) : [];
+                const previews = list.slice(0, 3).map(ev =>
+                  `<div class="cal-event ${ev.kind}" title="${ctx.esc(ev.title)}">${ev.time ? ev.time + ' ' : ''}${ctx.esc(ev.title)}</div>`
+                ).join('');
+                const more = list.length > 3 ? `<div class="cal-event more">+${list.length - 3} المزيد</div>` : '';
+                return `
+                  <div class="cal-day ${c.dim ? 'dim' : ''} ${!c.dim && isToday(c.day) ? 'today' : ''}" data-key="${c.key || ''}">
+                    <span class="num">${c.day}</span>
+                    ${previews}${more}
+                  </div>`;
+              }).join('')}
             </div>`;
+
           host.querySelector('#prevM').onclick = () => { current = new Date(y, m - 1, 1); draw(); };
           host.querySelector('#nextM').onclick = () => { current = new Date(y, m + 1, 1); draw(); };
           host.querySelector('#today').onclick = () => { current = new Date(); draw(); };
+
+          // Day click -> open detail modal
+          host.querySelectorAll('.cal-day:not(.dim)').forEach((cell) => {
+            cell.addEventListener('click', () => openDayDetail(cell.dataset.key));
+          });
         }
 
-        root.querySelector('#addEvt').addEventListener('click', async () => {
+        function openDayDetail(key) {
+          if (!key) return;
+          const list = monthData.byKey[key] || [];
+          const [y, mo, dd] = key.split('-').map(Number);
+          const dateObj = new Date(y, mo - 1, dd);
+          const humanDate = dateObj.toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+          const SECTION_ORDER = [
+            { kind: 'hearing',  label: 'الجلسات' },
+            { kind: 'deadline', label: 'المواعيد النهائية' },
+            { kind: 'task',     label: 'المهام' },
+            { kind: 'event',    label: 'الأحداث' }
+          ];
+          const PRIORITY_LABEL = { high: 'عالية', medium: 'متوسطة', low: 'منخفضة', urgent: 'عاجلة' };
+          const STATUS_LABEL = { open: 'مفتوح', pending: 'معلقة', completed: 'مكتملة', scheduled: 'مجدولة', in_progress: 'قيد التنفيذ', cancelled: 'ملغاة', missed: 'فائت' };
+
+          let bodyHTML;
+          if (!list.length) {
+            bodyHTML = `<div class="day-empty">لا توجد أحداث في هذا اليوم</div>`;
+          } else {
+            bodyHTML = SECTION_ORDER.map(({ kind, label }) => {
+              const items = list.filter((i) => i.kind === kind);
+              if (!items.length) return '';
+              return `
+                <div class="day-section ${kind}">
+                  <h4>${label} <span style="color:var(--muted);font-weight:400">(${items.length})</span></h4>
+                  ${items.map((i) => `
+                    <div class="day-row ${kind}">
+                      <div class="t">${i.time || '—'}</div>
+                      <div class="body">
+                        <div class="title">${ctx.esc(i.title)}</div>
+                        <div class="meta">
+                          ${i.location ? `<span>📍 ${ctx.esc(i.location)}</span>` : ''}
+                          ${i.priority ? `<span class="badge ${ctx.esc(i.priority)}">${ctx.esc(PRIORITY_LABEL[i.priority] || i.priority)}</span>` : ''}
+                          ${i.status ? `<span class="badge ${ctx.esc(i.status)}">${ctx.esc(STATUS_LABEL[i.status] || i.status)}</span>` : ''}
+                          ${i.href ? `<a href="${i.href}" class="btn-link">فتح ←</a>` : ''}
+                        </div>
+                      </div>
+                    </div>`).join('')}
+                </div>`;
+            }).join('');
+          }
+
+          ctx.openModal({
+            title: humanDate,
+            contentHTML: `<div style="max-height:60vh;overflow:auto">${bodyHTML}</div>
+              <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" id="addOnDay">+ إضافة حدث في هذا اليوم</button>
+              </div>`,
+            okText: 'إغلاق',
+            cancelText: null
+          });
+
+          setTimeout(() => {
+            const btn = document.getElementById('addOnDay');
+            if (btn) btn.addEventListener('click', () => {
+              // Close current modal and open add-event with date prefill
+              document.querySelectorAll('.modal-backdrop,.modal').forEach(el => el.remove());
+              openAddEvent({ dateKey: key });
+            });
+          }, 0);
+        }
+
+        async function openAddEvent(options = {}) {
           const [{ data: cases }, { data: clients }] = await Promise.all([
             ctx.api('/cases', { params: { limit: 200 } }),
             ctx.api('/clients', { params: { limit: 200 } })
           ]);
+          // Prefill start/end when a day was clicked: 09:00–10:00 local.
+          let startDefault = '', endDefault = '';
+          if (options.dateKey) {
+            startDefault = `${options.dateKey}T09:00`;
+            endDefault = `${options.dateKey}T10:00`;
+          }
           ctx.openModal({
-            title: 'إضافة حدث',
+            title: options.dateKey ? `إضافة حدث في ${options.dateKey}` : 'إضافة حدث',
             contentHTML: `
               <form id="evtForm" class="form-grid" onsubmit="event.preventDefault()">
                 <div class="form-field full"><label>العنوان *</label><input name="title" required></div>
@@ -117,8 +268,8 @@
                     <option value="other">أخرى</option>
                   </select>
                 </div>
-                <div class="form-field"><label>البدء *</label><input name="start_time" type="datetime-local" required></div>
-                <div class="form-field"><label>الانتهاء *</label><input name="end_time" type="datetime-local" required></div>
+                <div class="form-field"><label>البدء *</label><input name="start_time" type="datetime-local" value="${startDefault}" required></div>
+                <div class="form-field"><label>الانتهاء *</label><input name="end_time" type="datetime-local" value="${endDefault}" required></div>
                 <div class="form-field"><label>المكان</label><input name="location"></div>
                 <div class="form-field"><label>القضية</label>
                   <select name="case_id"><option value="">--</option>${cases.map(c => `<option value="${c.id}">${c.case_number} - ${c.title}</option>`).join('')}</select>
@@ -144,7 +295,9 @@
               catch (e) { ctx.toast(e.message, 'error'); return false; }
             }
           });
-        });
+        }
+
+        root.querySelector('#addEvt').addEventListener('click', () => openAddEvent());
 
         draw();
       }
