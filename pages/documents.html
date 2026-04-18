@@ -39,6 +39,7 @@
             { key: 'created_at', label: 'تاريخ الرفع', render: (r) => ctx.fmtDate(r.created_at) }
           ],
           rowActions: [
+            { label: 'معاينة', onClick: async (row) => ctx.previewDocument(row) },
             { label: 'تحميل', onClick: async (row) => {
               const token = localStorage.getItem('authToken') || '';
               const res = await fetch(`/api/documents/${row.id}/download`, { headers: { Authorization: 'Bearer ' + token } });

@@ -275,6 +275,19 @@
           }
         }
 
+        // Delegate doc-preview clicks to the reusable helper
+        panel.addEventListener('click', (e) => {
+          const a = e.target.closest('.doc-preview');
+          if (!a) return;
+          e.preventDefault();
+          ctx.previewDocument({
+            id: a.dataset.id,
+            file_mime_type: a.dataset.mime,
+            file_name: a.dataset.name,
+            file_size: Number(a.dataset.size) || 0
+          });
+        });
+
         const TABS = {
           timeline: renderTimeline,
           cases: () => renderTable(`/clients/${id}/cases`, [
@@ -315,7 +328,10 @@
             { key: 'document_type', label: 'النوع' },
             { key: 'file_name', label: 'الملف' },
             { key: 'created_at', label: 'التاريخ', render: (r) => ctx.fmtDateSmart(r.created_at) },
-            { key: '_act', label: '', render: (r) => `<a class="btn-link" target="_blank" href="/api/documents/${r.id}/download">تحميل</a>` }
+            { key: '_act', label: '', render: (r) => `
+              <a class="btn-link doc-preview" data-id="${r.id}" data-mime="${ctx.esc(r.file_mime_type || '')}" data-name="${ctx.esc(r.file_name || '')}" data-size="${r.file_size || 0}" href="javascript:void(0)">معاينة</a>
+              &nbsp;•&nbsp;
+              <a class="btn-link" target="_blank" href="/api/documents/${r.id}/download">تحميل</a>` }
           ], 'لا توجد مستندات لهذا الموكل'),
           contracts: () => renderTable(`/clients/${id}/contracts`, [
             { key: 'title', label: 'العنوان' },

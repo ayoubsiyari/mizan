@@ -69,6 +69,69 @@
     return data;
   }
 
+  // ---------- Document preview ----------
+  // Opens a modal preview for a document. Supports PDFs (iframe), images, text
+  // and video/audio. Unsupported types fall back to a download CTA.
+  async function previewDocument(doc) {
+    if (!doc || !doc.id) return;
+    const token = localStorage.getItem('authToken') || '';
+    // Fetch with auth, then build an in-memory blob URL so <iframe>/<img>/... work.
+    const resp = await fetch(`/api/documents/${doc.id}/download`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!resp.ok) { toast('تعذر تحميل الملف', 'error'); return; }
+    const mime = doc.file_mime_type || resp.headers.get('content-type') || '';
+    const blob = await resp.blob();
+    // Force the blob's mime (some browsers derive preview from blob.type).
+    const typed = mime && blob.type !== mime ? new Blob([blob], { type: mime }) : blob;
+    const url = URL.createObjectURL(typed);
+
+    const name = doc.file_name || doc.title || 'ملف';
+    let viewer;
+    if (mime.startsWith('image/')) {
+      viewer = `<img src="${url}" alt="" style="max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:6px">`;
+    } else if (mime === 'application/pdf') {
+      viewer = `<iframe src="${url}" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:6px" title="PDF"></iframe>`;
+    } else if (mime.startsWith('video/')) {
+      viewer = `<video src="${url}" controls style="max-width:100%;max-height:70vh;display:block;margin:0 auto"></video>`;
+    } else if (mime.startsWith('audio/')) {
+      viewer = `<audio src="${url}" controls style="width:100%"></audio>`;
+    } else if (mime.startsWith('text/') || /\.(txt|csv|md|json|xml|log)$/i.test(name)) {
+      const text = await typed.text();
+      viewer = `<pre style="background:#f9fafb;padding:12px;border:1px solid var(--border);border-radius:6px;max-height:70vh;overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left">${esc(text)}</pre>`;
+    } else {
+      viewer = `
+        <div style="text-align:center;padding:30px">
+          <div style="font-size:3rem;margin-bottom:10px">📄</div>
+          <div style="color:var(--muted);margin-bottom:14px">لا يمكن معاينة هذا النوع من الملفات مباشرةً</div>
+          <a href="${url}" download="${esc(name)}" class="btn btn-primary">تحميل الملف</a>
+        </div>`;
+    }
+
+    const meta = [
+      doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : null,
+      mime || null
+    ].filter(Boolean).join(' • ');
+
+    const modal = openModal({
+      title: esc(name),
+      contentHTML: `
+        ${meta ? `<div style="color:var(--muted);font-size:.85rem;margin-bottom:10px">${esc(meta)}</div>` : ''}
+        ${viewer}
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <a href="${url}" download="${esc(name)}" class="btn btn-secondary btn-sm">⬇ تحميل</a>
+          <a href="${url}" target="_blank" class="btn btn-secondary btn-sm">فتح في نافذة جديدة</a>
+        </div>`,
+      okText: 'إغلاق',
+      cancelText: null
+    });
+    // Release the blob URL when modal closes
+    const release = () => setTimeout(() => URL.revokeObjectURL(url), 200);
+    modal.body.closest('.modal-backdrop').addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal-backdrop') || e.target.classList.contains('close') || e.target.classList.contains('ok')) release();
+    }, { once: false });
+  }
+
   // ---------- Toasts ----------
   function ensureToastHost() {
     let host = document.querySelector('.toast-host');
@@ -308,7 +371,7 @@
 
     // Let the page render itself
     if (typeof cfg.render === 'function') {
-      Promise.resolve(cfg.render(document.getElementById('pageRoot'), { api, apiUpload, toast, openModal, confirmModal, esc, fmtDate, fmtDateTime, fmtMoney, fmtHijri, fmtDateSmart, getCalendar, setCalendar, user }))
+      Promise.resolve(cfg.render(document.getElementById('pageRoot'), { api, apiUpload, previewDocument, toast, openModal, confirmModal, esc, fmtDate, fmtDateTime, fmtMoney, fmtHijri, fmtDateSmart, getCalendar, setCalendar, user }))
         .catch((err) => {
           console.error(err);
           toast('فشل تحميل الصفحة: ' + (err.message || 'خطأ'), 'error', 5000);
@@ -355,5 +418,5 @@
   }
   function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
-  window.AppShell = { mount, api, apiUpload, toast, openModal, confirmModal, NAV, esc, fmtDate, fmtDateTime, fmtMoney, fmtHijri, fmtDateSmart, getCalendar, setCalendar };
+  window.AppShell = { mount, api, apiUpload, previewDocument, toast, openModal, confirmModal, NAV, esc, fmtDate, fmtDateTime, fmtMoney, fmtHijri, fmtDateSmart, getCalendar, setCalendar };
 })();
