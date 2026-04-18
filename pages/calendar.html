@@ -118,11 +118,16 @@
               title: ev.title, time: timeStr(d), location: ev.location, id: ev.id, source: 'calendar'
             });
           });
+          const HEARING_TYPE_AR = {
+            initial: 'افتتاحية', follow_up: 'متابعة', evidence: 'إثبات',
+            judgment: 'نطق بالحكم', other: 'أخرى'
+          };
           (hearingsRes.data || []).forEach((h) => {
             const d = parseTs(h.scheduled_at); if (!inMonth(d)) return;
+            const typeAr = HEARING_TYPE_AR[h.hearing_type] || h.hearing_type || '';
             push(dateKey(d), {
               kind: 'hearing',
-              title: h.title || `جلسة (${h.hearing_type || ''})`,
+              title: h.title ? `${h.title}${typeAr ? ` (${typeAr})` : ''}` : `جلسة ${typeAr}`.trim(),
               time: timeStr(d), location: h.court_name, status: h.status,
               href: `cases.html?focus=${h.case_id}`, source: 'hearing'
             });
