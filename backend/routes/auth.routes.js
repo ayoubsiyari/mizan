@@ -21,6 +21,11 @@ function signToken(user, expiresIn = config.jwt.expiresIn) {
 function publicUser(u) {
   if (!u) return null;
   const { password_hash, ...rest } = u;
+  // Parse nav_permissions JSON array; null = full access
+  if (rest.nav_permissions != null) {
+    try { rest.nav_permissions = JSON.parse(rest.nav_permissions); }
+    catch { rest.nav_permissions = null; }
+  }
   return rest;
 }
 

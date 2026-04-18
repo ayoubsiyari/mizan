@@ -65,6 +65,7 @@ app.use('/api/time-entries', require('./routes/time-entries.routes'));
 app.use('/api/deadlines', require('./routes/deadlines.routes'));
 app.use('/api/trust', require('./routes/trust.routes'));
 app.use('/api/conflicts', require('./routes/conflicts.routes'));
+app.use('/api/visitors', require('./routes/visitors.routes'));
 
 // Static frontend (serve from project root)
 const webRoot = path.resolve(__dirname, '..');

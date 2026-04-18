@@ -4,6 +4,7 @@
 (function () {
   const NAV = [
     { key: 'dashboard', label: 'لوحة التحكم',  href: 'dashboard.html', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
+    { key: 'reception', label: 'الاستقبال',     href: 'reception.html', icon: 'M3 12l2-2 4 4 8-8 4 4M3 21h18' },
     { key: 'clients',   label: 'الموكلون',     href: 'clients.html',   icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 .01M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' },
     { key: 'cases',     label: 'القضايا',       href: 'cases.html',     icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8' },
     { key: 'hearings',  label: 'الجلسات',       href: 'hearings.html',  icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10' },
@@ -170,6 +171,16 @@
     return getCalendar() === 'hijri' ? fmtHijri(v) : fmtDate(v);
   }
 
+  // Filter NAV by the user's nav_permissions (admin/null = all).
+  // Always keep 'settings' so every user can edit profile / password.
+  function navForUser(user) {
+    if (!user) return NAV;
+    if (user.role === 'admin') return NAV;
+    const perms = Array.isArray(user.nav_permissions) ? user.nav_permissions : null;
+    if (!perms) return NAV; // null = full access by default
+    return NAV.filter((n) => perms.includes(n.key) || n.key === 'settings');
+  }
+
   // ---------- Mount ----------
   function mount(cfg) {
     // Auth gate
@@ -180,6 +191,17 @@
       return;
     }
 
+    // Enforce page access: if the user isn't allowed to see the page they're on,
+    // bounce them to the first item they can see (or dashboard).
+    const visibleNav = navForUser(user);
+    if (cfg.page && !visibleNav.some((n) => n.key === cfg.page) && user.role !== 'admin') {
+      const fallback = visibleNav[0];
+      if (fallback && fallback.href !== location.pathname.split('/').pop()) {
+        window.location.replace(fallback.href);
+        return;
+      }
+    }
+
     const sidebarHTML = `
       <aside class="shell-sidebar">
         <div class="brand">
@@ -188,7 +210,7 @@
         </div>
         <nav>
           <ul>
-            ${NAV.map(n => `
+            ${visibleNav.map(n => `
               <li>
                 <a href="${n.href}" data-nav="${n.key}" class="${cfg.page === n.key ? 'active' : ''}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${n.icon}"></path></svg>

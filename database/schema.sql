@@ -44,10 +44,36 @@ CREATE TABLE IF NOT EXISTS users (
     is_active INTEGER DEFAULT 1,
     is_verified INTEGER DEFAULT 0,
     last_login_at TEXT,
+    nav_permissions TEXT,        -- JSON array of allowed sidebar keys (NULL = all)
+    job_title TEXT,              -- free-form display label (e.g. 'سكرتير', 'مستقبل')
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     deleted_at TEXT
 );
+
+-- Reception / visitor log (walk-ins, inquiries)
+CREATE TABLE IF NOT EXISTS visitors (
+    id TEXT PRIMARY KEY,
+    firm_id TEXT NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+    client_id TEXT REFERENCES clients(id) ON DELETE SET NULL,
+    full_name TEXT NOT NULL,
+    phone TEXT,
+    national_id TEXT,
+    reason TEXT,
+    assigned_to TEXT REFERENCES users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'waiting'
+        CHECK (status IN ('waiting','in_meeting','done','cancelled','no_show')),
+    checked_in_at TEXT NOT NULL DEFAULT (datetime('now')),
+    checked_out_at TEXT,
+    notes TEXT,
+    created_by TEXT REFERENCES users(id),
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_visitors_firm ON visitors(firm_id);
+CREATE INDEX IF NOT EXISTS idx_visitors_status ON visitors(status);
+CREATE INDEX IF NOT EXISTS idx_visitors_checked_in ON visitors(checked_in_at);
 
 -- Password reset tokens
 CREATE TABLE IF NOT EXISTS password_resets (

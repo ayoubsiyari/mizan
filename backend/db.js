@@ -61,6 +61,8 @@ async function runLazyMigrations() {
   await addIfMissing('contracts', 'client_signature_url', 'TEXT');
   await addIfMissing('contracts', 'firm_signature_url', 'TEXT');
   await addIfMissing('hearings', 'reminder_sent', 'INTEGER DEFAULT 0');
+  await addIfMissing('users', 'nav_permissions', 'TEXT');
+  await addIfMissing('users', 'job_title', 'TEXT');
 }
 
 module.exports = { db, run, get, all, exec, init };

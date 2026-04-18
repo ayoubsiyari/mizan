@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الاستقبال - ميزان</title>
+  <link rel="stylesheet" href="../css/app-shell.css">
+  <style>
+    .rx-layout { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 900px) { .rx-layout { grid-template-columns: 1fr; } }
+    .rx-form label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; margin-top: 10px; }
+    .rx-form input, .rx-form select, .rx-form textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-family: inherit; font-size: .95rem;
+    }
+    .rx-list { display: flex; flex-direction: column; gap: 10px; }
+    .rx-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px; display: flex; justify-content: space-between; gap: 14px; align-items: flex-start;
+    }
+    .rx-card.waiting { border-inline-start: 4px solid #f59e0b; }
+    .rx-card.in_meeting { border-inline-start: 4px solid #2563eb; }
+    .rx-card.done { border-inline-start: 4px solid #16a34a; opacity: .7; }
+    .rx-card.cancelled, .rx-card.no_show { border-inline-start: 4px solid #6b7280; opacity: .6; }
+    .rx-info { flex: 1; min-width: 0; }
+    .rx-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+    .rx-meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: .85rem; }
+    .rx-reason { margin-top: 6px; font-size: .9rem; }
+    .rx-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+    .rx-badge-time { background: #f3f4f6; color: #374151; padding: 3px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <script src="../js/app-shell.js"></script>
+  <script>
+    AppShell.mount({
+      page: 'reception',
+      title: 'الاستقبال',
+      render: async (root, ctx) => {
+        let staff = [];
+        try { staff = (await ctx.api('/settings/users')).data || []; } catch {}
+        // Non-admin may not have /settings/users; fall back to empty (assigned_to stays null)
+
+        root.innerHTML = `
+          <div class="stats-row" id="rxStats"></div>
+          <div class="rx-layout">
+            <div class="card">
+              <h3 style="margin:0 0 8px">تسجيل زائر جديد</h3>
+              <div style="font-size:.85rem;color:var(--muted);margin-bottom:10px">املأ بيانات الزائر ثم اضغط تسجيل</div>
+              <form id="rxForm" class="rx-form" onsubmit="event.preventDefault()">
+                <label>الاسم الكامل *</label>
+                <input name="full_name" required placeholder="مثال: أحمد محمد السبيعي">
+                <label>الهاتف</label>
+                <input name="phone" type="tel" placeholder="05...">
+                <label>رقم الهوية</label>
+                <input name="national_id">
+                <label>سبب الزيارة</label>
+                <textarea name="reason" rows="2" placeholder="استشارة، متابعة قضية، تسليم مستند..."></textarea>
+                <label>المحامي المسؤول</label>
+                <select name="assigned_to">
+                  <option value="">— بدون —</option>
+                  ${staff.filter(u => u.is_active && (u.role === 'lawyer' || u.role === 'admin'))
+                         .map(u => `<option value="${ctx.esc(u.id)}">${ctx.esc(u.first_name)} ${ctx.esc(u.last_name)}${u.job_title ? ' — ' + ctx.esc(u.job_title) : ''}</option>`).join('')}
+                </select>
+                <label>ملاحظات</label>
+                <textarea name="notes" rows="2"></textarea>
+                <div style="margin-top:14px;display:flex;gap:8px">
+                  <button class="btn btn-primary" type="submit" style="flex:1">تسجيل الزائر</button>
+                  <button class="btn btn-secondary" type="reset">مسح</button>
+                </div>
+              </form>
+            </div>
+
+            <div>
+              <div class="page-header" style="margin:0 0 12px">
+                <h3 style="margin:0">زوار اليوم</h3>
+                <div style="display:flex;gap:6px">
+                  <button class="chip active" data-filter="all" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--brand);color:#fff;font-family:inherit;cursor:pointer">الكل</button>
+                  <button class="chip" data-filter="waiting" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-family:inherit;cursor:pointer">بانتظار</button>
+                  <button class="chip" data-filter="in_meeting" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-family:inherit;cursor:pointer">في اجتماع</button>
+                  <button class="chip" data-filter="done" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-family:inherit;cursor:pointer">منتهي</button>
+                </div>
+              </div>
+              <div id="rxList" class="rx-list"><div class="empty-state">جارِ التحميل...</div></div>
+            </div>
+          </div>
+        `;
+
+        const STATUS_LABEL = { waiting: 'بانتظار', in_meeting: 'في اجتماع', done: 'منتهي', cancelled: 'ملغي', no_show: 'لم يحضر' };
+        let currentFilter = 'all';
+        let visitors = [];
+
+        function fmtTime(ts) {
+          try { return new Date(ts.replace(' ', 'T') + (ts.includes('Z') ? '' : 'Z')).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }); }
+          catch { return ts; }
+        }
+
+        async function loadStats() {
+          try {
+            const { data: s } = await ctx.api('/visitors/summary');
+            root.querySelector('#rxStats').innerHTML = `
+              <div class="stat-card"><div class="stat-value">${s.today}</div><div class="stat-label">زوار اليوم</div></div>
+              <div class="stat-card"><div class="stat-value" style="color:#f59e0b">${s.waiting}</div><div class="stat-label">بانتظار</div></div>
+              <div class="stat-card"><div class="stat-value" style="color:#2563eb">${s.inMeeting}</div><div class="stat-label">في اجتماع الآن</div></div>`;
+          } catch {}
+        }
+
+        async function loadList() {
+          try {
+            const { data } = await ctx.api('/visitors/today');
+            visitors = data;
+          } catch (e) { visitors = []; }
+          draw();
+        }
+
+        function draw() {
+          const host = root.querySelector('#rxList');
+          const filtered = currentFilter === 'all' ? visitors : visitors.filter(v => v.status === currentFilter);
+          if (!filtered.length) { host.innerHTML = `<div class="empty-state">لا يوجد زوار</div>`; return; }
+          host.innerHTML = filtered.map(v => {
+            const assigned = (v.assigned_first || v.assigned_last) ? `${v.assigned_first || ''} ${v.assigned_last || ''}`.trim() : null;
+            const nextActions = {
+              waiting: [{ action: 'in_meeting', label: 'بدء الاجتماع', cls: 'btn-primary' },
+                        { action: 'no_show', label: 'لم يحضر', cls: 'btn-secondary' },
+                        { action: 'cancelled', label: 'إلغاء', cls: 'btn-danger' }],
+              in_meeting: [{ action: 'done', label: 'إنهاء الاجتماع', cls: 'btn-primary' }],
+              done: [], cancelled: [], no_show: []
+            };
+            const actions = (nextActions[v.status] || []).map(a =>
+              `<button class="btn btn-sm ${a.cls}" data-action="${a.action}" data-id="${v.id}">${a.label}</button>`).join('');
+            return `
+              <div class="rx-card ${ctx.esc(v.status)}">
+                <div class="rx-info">
+                  <div class="rx-name">
+                    ${ctx.esc(v.full_name)}
+                    <span class="badge ${ctx.esc(v.status)}" style="font-size:.7rem;margin-inline-start:6px">${STATUS_LABEL[v.status] || v.status}</span>
+                    <span class="rx-badge-time" style="margin-inline-start:6px">⏱ ${fmtTime(v.checked_in_at)}${v.checked_out_at ? ' → ' + fmtTime(v.checked_out_at) : ''}</span>
+                  </div>
+                  <div class="rx-meta">
+                    ${v.phone ? `<span>📞 ${ctx.esc(v.phone)}</span>` : ''}
+                    ${v.national_id ? `<span>🆔 ${ctx.esc(v.national_id)}</span>` : ''}
+                    ${assigned ? `<span>👤 ${ctx.esc(assigned)}</span>` : ''}
+                  </div>
+                  ${v.reason ? `<div class="rx-reason">${ctx.esc(v.reason)}</div>` : ''}
+                  ${v.notes ? `<div class="rx-reason" style="color:var(--muted)">📝 ${ctx.esc(v.notes)}</div>` : ''}
+                </div>
+                <div class="rx-actions">
+                  ${actions}
+                  <button class="btn btn-sm btn-secondary" data-action="convert" data-id="${v.id}" title="تحويل إلى موكل">→ موكل</button>
+                  <button class="btn btn-sm btn-danger" data-action="delete" data-id="${v.id}">حذف</button>
+                </div>
+              </div>`;
+          }).join('');
+        }
+
+        root.querySelector('#rxList').addEventListener('click', async (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const id = btn.dataset.id;
+          const action = btn.dataset.action;
+          const v = visitors.find(x => x.id === id);
+          try {
+            if (action === 'delete') {
+              if (!(await ctx.confirmModal('حذف الزائر نهائياً؟'))) return;
+              await ctx.api(`/visitors/${id}`, { method: 'DELETE' });
+            } else if (action === 'convert') {
+              if (!(await ctx.confirmModal(`تحويل "${v.full_name}" إلى موكل؟`))) return;
+              const parts = (v.full_name || '').split(/\s+/);
+              const firstName = parts[0] || v.full_name || '';
+              const lastName = parts.slice(1).join(' ') || '-';
+              const { data: client } = await ctx.api('/clients', { method: 'POST', body: {
+                first_name: firstName, last_name: lastName,
+                phone: v.phone, national_id: v.national_id,
+                notes: v.reason ? `من الاستقبال: ${v.reason}` : null,
+                client_type: 'individual'
+              }});
+              await ctx.api(`/visitors/${id}`, { method: 'PUT', body: { client_id: client.id, status: 'done' } });
+              ctx.toast('تم التحويل إلى موكل', 'success');
+              window.location.href = `client-detail.html?id=${client.id}`;
+              return;
+            } else {
+              await ctx.api(`/visitors/${id}/status`, { method: 'POST', body: { status: action } });
+            }
+            await Promise.all([loadList(), loadStats()]);
+          } catch (err) { ctx.toast(err.message, 'error'); }
+        });
+
+        root.querySelectorAll('.chip[data-filter]').forEach(c => c.addEventListener('click', () => {
+          root.querySelectorAll('.chip[data-filter]').forEach(x => {
+            x.classList.remove('active'); x.style.background = 'var(--card)'; x.style.color = 'inherit';
+          });
+          c.classList.add('active'); c.style.background = 'var(--brand)'; c.style.color = '#fff';
+          currentFilter = c.dataset.filter;
+          draw();
+        }));
+
+        root.querySelector('#rxForm').addEventListener('submit', async (e) => {
+          const f = e.target;
+          const body = {
+            full_name: f.full_name.value.trim(),
+            phone: f.phone.value.trim() || null,
+            national_id: f.national_id.value.trim() || null,
+            reason: f.reason.value.trim() || null,
+            assigned_to: f.assigned_to.value || null,
+            notes: f.notes.value.trim() || null,
+            status: 'waiting'
+          };
+          if (!body.full_name) return;
+          try {
+            await ctx.api('/visitors', { method: 'POST', body });
+            ctx.toast('تم تسجيل الزائر', 'success');
+            f.reset();
+            await Promise.all([loadList(), loadStats()]);
+          } catch (err) { ctx.toast(err.message, 'error'); }
+        });
+
+        await Promise.all([loadList(), loadStats()]);
+        // Auto-refresh every 30s so the receptionist sees status changes by other users
+        setInterval(() => { loadList(); loadStats(); }, 30000);
+      }
+    });
+  </script>
+</body>
+</html>

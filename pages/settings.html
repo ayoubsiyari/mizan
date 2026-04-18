@@ -110,22 +110,70 @@
 
         async function renderUsers() {
           const { data } = await ctx.api('/settings/users');
+          const NAV = AppShell.NAV;
           tabHost.innerHTML = `
             <div class="page-header"><h3>المستخدمون</h3><button class="btn btn-primary" id="addU">+ إضافة مستخدم</button></div>
             <div class="table-wrap"><table class="data">
-              <thead><tr><th>الاسم</th><th>البريد</th><th>الصلاحية</th><th>الحالة</th><th></th></tr></thead>
-              <tbody>${(data || []).map(u => `
+              <thead><tr><th>الاسم</th><th>المسمى</th><th>البريد</th><th>الصلاحية</th><th>الأقسام المتاحة</th><th>الحالة</th><th></th></tr></thead>
+              <tbody>${(data || []).map(u => {
+                let perms = u.nav_permissions;
+                if (typeof perms === 'string') { try { perms = JSON.parse(perms); } catch { perms = null; } }
+                const permLabel = u.role === 'admin' ? 'الكل (مسؤول)' :
+                  (Array.isArray(perms) ? (perms.length + ' قسم') : 'الكل');
+                return `
                 <tr data-id="${u.id}">
                   <td>${ctx.esc(u.first_name)} ${ctx.esc(u.last_name)}</td>
+                  <td>${ctx.esc(u.job_title || '-')}</td>
                   <td>${ctx.esc(u.email)}</td>
                   <td>${u.role}</td>
+                  <td>${ctx.esc(permLabel)}</td>
                   <td><span class="badge ${u.is_active ? 'active' : 'closed'}">${u.is_active ? 'نشط' : 'غير نشط'}</span></td>
-                  <td class="actions"><button class="btn btn-sm btn-danger" data-del>حذف</button></td>
-                </tr>`).join('') || '<tr><td class="empty" colspan="5">لا مستخدمين</td></tr>'}
+                  <td class="actions">
+                    <button class="btn btn-sm btn-secondary" data-edit>تعديل</button>
+                    <button class="btn btn-sm btn-secondary" data-reset>كلمة مرور</button>
+                    <button class="btn btn-sm btn-danger" data-del>حذف</button>
+                  </td>
+                </tr>`;
+              }).join('') || '<tr><td class="empty" colspan="7">لا مستخدمين</td></tr>'}
               </tbody>
             </table></div>`;
+
+          function permCheckboxes(checked) {
+            // If null => treat as "all checked"
+            const all = checked == null;
+            return NAV.map(n => {
+              const isChecked = all || (Array.isArray(checked) && checked.includes(n.key));
+              return `<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+                <input type="checkbox" name="perm" value="${n.key}" ${isChecked ? 'checked' : ''}>
+                <span>${ctx.esc(n.label)}</span></label>`;
+            }).join('');
+          }
+          function collectPerms(body) {
+            return Array.from(body.querySelectorAll('input[name="perm"]:checked')).map(i => i.value);
+          }
+          function presetButtons(body) {
+            const presets = {
+              'سكرتير': ['reception', 'clients', 'calendar', 'tasks', 'notes'],
+              'محامي': ['dashboard', 'clients', 'cases', 'hearings', 'documents', 'calendar', 'tasks', 'deadlines', 'time', 'notes', 'contracts', 'courts'],
+              'محاسب': ['dashboard', 'clients', 'billing', 'trust', 'reports'],
+              'مستقبل فقط': ['reception'],
+              'الكل': NAV.map(n => n.key)
+            };
+            const bar = document.createElement('div');
+            bar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px';
+            Object.entries(presets).forEach(([label, keys]) => {
+              const b = document.createElement('button');
+              b.type = 'button'; b.className = 'btn btn-sm btn-secondary'; b.textContent = label;
+              b.addEventListener('click', () => {
+                body.querySelectorAll('input[name="perm"]').forEach(i => i.checked = keys.includes(i.value));
+              });
+              bar.appendChild(b);
+            });
+            return bar;
+          }
+
           tabHost.querySelector('#addU').addEventListener('click', () => {
-            ctx.openModal({
+            const m = ctx.openModal({
               title: 'إضافة مستخدم',
               contentHTML: `
                 <form id="uf" class="form-grid" onsubmit="event.preventDefault()">
@@ -133,8 +181,9 @@
                   <div class="form-field"><label>اسم العائلة *</label><input name="lastName" required></div>
                   <div class="form-field"><label>البريد *</label><input name="email" type="email" required></div>
                   <div class="form-field"><label>الهاتف</label><input name="phone" type="tel"></div>
-                  <div class="form-field"><label>كلمة المرور *</label><input name="password" type="password" required></div>
-                  <div class="form-field"><label>الصلاحية</label>
+                  <div class="form-field"><label>كلمة المرور *</label><input name="password" type="password" required minlength="8"></div>
+                  <div class="form-field"><label>المسمى الوظيفي</label><input name="jobTitle" placeholder="سكرتير / مستقبل / محاسب"></div>
+                  <div class="form-field"><label>الصلاحية النظامية</label>
                     <select name="role">
                       <option value="lawyer">محامي</option>
                       <option value="assistant">مساعد</option>
@@ -142,20 +191,99 @@
                       <option value="admin">مسؤول</option>
                     </select>
                   </div>
+                  <div class="form-field full">
+                    <label>الأقسام المتاحة (شريط القائمة الجانبية)</label>
+                    <div id="presetHost"></div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">${permCheckboxes([])}</div>
+                    <div style="font-size:.8rem;color:var(--muted);margin-top:6px">اختر الأقسام التي سيرى هذا المستخدم في القائمة الجانبية. المسؤول دائماً يرى الكل.</div>
+                  </div>
                 </form>`,
               onOk: async (body) => {
                 const f = body.querySelector('#uf');
+                const perms = collectPerms(body);
                 try {
                   await ctx.api('/settings/users', { method: 'POST', body: {
                     firstName: f.firstName.value, lastName: f.lastName.value,
                     email: f.email.value, phone: f.phone.value || null,
-                    password: f.password.value, role: f.role.value
+                    password: f.password.value, role: f.role.value,
+                    jobTitle: f.jobTitle.value || null,
+                    navPermissions: perms
                   }});
                   ctx.toast('تم إضافة المستخدم', 'success'); renderUsers(); return true;
                 } catch (e) { ctx.toast(e.message, 'error'); return false; }
               }
             });
+            m.body.querySelector('#presetHost').appendChild(presetButtons(m.body));
           });
+
+          tabHost.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', async (e) => {
+            const id = e.target.closest('tr').dataset.id;
+            const u = data.find(x => x.id === id);
+            let perms = u.nav_permissions;
+            if (typeof perms === 'string') { try { perms = JSON.parse(perms); } catch { perms = null; } }
+            const m = ctx.openModal({
+              title: `تعديل: ${ctx.esc(u.first_name)} ${ctx.esc(u.last_name)}`,
+              contentHTML: `
+                <form id="euf" class="form-grid" onsubmit="event.preventDefault()">
+                  <div class="form-field"><label>الاسم الأول</label><input name="firstName" value="${ctx.esc(u.first_name)}"></div>
+                  <div class="form-field"><label>اسم العائلة</label><input name="lastName" value="${ctx.esc(u.last_name)}"></div>
+                  <div class="form-field"><label>الهاتف</label><input name="phone" value="${ctx.esc(u.phone || '')}"></div>
+                  <div class="form-field"><label>المسمى الوظيفي</label><input name="jobTitle" value="${ctx.esc(u.job_title || '')}"></div>
+                  <div class="form-field"><label>الصلاحية النظامية</label>
+                    <select name="role">
+                      ${['lawyer','assistant','paralegal','admin'].map(r =>
+                        `<option value="${r}" ${u.role===r?'selected':''}>${r==='admin'?'مسؤول':r==='lawyer'?'محامي':r==='assistant'?'مساعد':'مساعد قانوني'}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="form-field"><label>الحالة</label>
+                    <select name="isActive">
+                      <option value="1" ${u.is_active?'selected':''}>نشط</option>
+                      <option value="0" ${!u.is_active?'selected':''}>غير نشط</option>
+                    </select>
+                  </div>
+                  <div class="form-field full">
+                    <label>الأقسام المتاحة</label>
+                    <div id="presetHost2"></div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">${permCheckboxes(perms)}</div>
+                  </div>
+                </form>`,
+              onOk: async (body) => {
+                const f = body.querySelector('#euf');
+                const perms = collectPerms(body);
+                try {
+                  await ctx.api(`/settings/users/${id}`, { method: 'PUT', body: {
+                    firstName: f.firstName.value, lastName: f.lastName.value,
+                    phone: f.phone.value || null,
+                    jobTitle: f.jobTitle.value || null,
+                    role: f.role.value,
+                    isActive: Number(f.isActive.value),
+                    navPermissions: perms
+                  }});
+                  ctx.toast('تم الحفظ', 'success'); renderUsers(); return true;
+                } catch (err) { ctx.toast(err.message, 'error'); return false; }
+              }
+            });
+            m.body.querySelector('#presetHost2').appendChild(presetButtons(m.body));
+          }));
+
+          tabHost.querySelectorAll('[data-reset]').forEach(b => b.addEventListener('click', async (e) => {
+            const id = e.target.closest('tr').dataset.id;
+            ctx.openModal({
+              title: 'إعادة تعيين كلمة المرور',
+              contentHTML: `<form id="rf" onsubmit="event.preventDefault()">
+                <div class="form-field full"><label>كلمة المرور الجديدة (٨ حروف على الأقل)</label><input name="password" type="password" required minlength="8" style="width:100%"></div>
+              </form>`,
+              okText: 'تعيين',
+              onOk: async (body) => {
+                const pwd = body.querySelector('input[name="password"]').value;
+                try {
+                  await ctx.api(`/settings/users/${id}/reset-password`, { method: 'POST', body: { password: pwd } });
+                  ctx.toast('تم تحديث كلمة المرور', 'success'); return true;
+                } catch (err) { ctx.toast(err.message, 'error'); return false; }
+              }
+            });
+          }));
+
           tabHost.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async (e) => {
             if (!(await ctx.confirmModal('حذف المستخدم؟'))) return;
             const id = e.target.closest('tr').dataset.id;
