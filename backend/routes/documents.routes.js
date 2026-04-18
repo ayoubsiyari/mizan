@@ -17,9 +17,18 @@ if (!fs.existsSync(config.upload.directory)) {
   fs.mkdirSync(config.upload.directory, { recursive: true });
 }
 
+// Multer decodes multipart filenames as latin1 per RFC 7578, which mangles
+// UTF-8 filenames (Arabic/CJK/emoji). Re-encode to proper UTF-8.
+function decodeOriginalName(file) {
+  try { return Buffer.from(file.originalname, 'latin1').toString('utf8'); }
+  catch { return file.originalname; }
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, config.upload.directory),
   filename: (req, file, cb) => {
+    // Fix the in-memory originalname too, so downstream code sees UTF-8.
+    file.originalname = decodeOriginalName(file);
     const ext = path.extname(file.originalname);
     cb(null, `${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`);
   }
@@ -57,7 +66,13 @@ router.get('/:id/download', asyncHandler(async (req, res) => {
   );
   if (!doc) throw new HttpError('Not Found', 404);
   if (!fs.existsSync(doc.file_path)) throw new HttpError('File missing on disk', 404);
-  res.download(doc.file_path, doc.file_name);
+  // Use RFC 5987 encoded filename* so non-ASCII (Arabic) names survive Content-Disposition.
+  const encoded = encodeURIComponent(doc.file_name);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`
+  );
+  res.sendFile(path.resolve(doc.file_path));
 }));
 
 router.get('/categories', asyncHandler(async (req, res) => {
