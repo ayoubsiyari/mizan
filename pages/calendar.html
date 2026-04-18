@@ -57,6 +57,31 @@
     .day-empty { padding: 30px; text-align: center; color: var(--muted); }
     .btn-link { color: var(--brand); text-decoration: none; font-size: .85rem; font-weight: 600; }
     .btn-link:hover { text-decoration: underline; }
+
+    /* Mobile: compact grid with dots instead of full event chips */
+    @media (max-width: 640px) {
+      .cal-grid { grid-auto-rows: 62px; gap: 2px; }
+      .cal-weekdays { gap: 2px; }
+      .cal-weekday { padding: 6px 2px; font-size: .7rem; }
+      .cal-day { padding: 4px 3px; gap: 0; }
+      .cal-day .num { font-size: .8rem; }
+      .cal-day.today .num { width: 22px; height: 22px; font-size: .75rem; }
+      /* hide text chips on phones, replace with colored dots */
+      .cal-event { display: none; }
+      .cal-event-dots {
+        display: flex; gap: 3px; justify-content: center;
+        position: absolute; bottom: 4px; left: 0; right: 0;
+      }
+      .cal-event-dot { width: 6px; height: 6px; border-radius: 50%; }
+      .cal-event-dot.event    { background: #2563eb; }
+      .cal-event-dot.hearing  { background: #9333ea; }
+      .cal-event-dot.deadline { background: #dc2626; }
+      .cal-event-dot.task     { background: #0ea5e9; }
+      .cal-toolbar h3 { font-size: 1rem; }
+      .day-row { grid-template-columns: auto 1fr; }
+    }
+    /* Dots container is hidden on desktop */
+    .cal-event-dots { display: none; }
   </style>
 </head>
 <body>
@@ -185,10 +210,15 @@
                   `<div class="cal-event ${ev.kind}" title="${ctx.esc(ev.title)}">${ev.time ? ev.time + ' ' : ''}${ctx.esc(ev.title)}</div>`
                 ).join('');
                 const more = list.length > 3 ? `<div class="cal-event more">+${toArDigits(list.length - 3)} المزيد</div>` : '';
+                // Deduplicated kind dots for the phone view
+                const kinds = [...new Set(list.map(e => e.kind))].slice(0, 4);
+                const dots = kinds.length
+                  ? `<div class="cal-event-dots">${kinds.map(k => `<span class="cal-event-dot ${k}"></span>`).join('')}</div>`
+                  : '';
                 return `
                   <div class="cal-day ${c.dim ? 'dim' : ''} ${!c.dim && isToday(c.day) ? 'today' : ''}" data-key="${c.key || ''}">
                     <span class="num">${toArDigits(c.day)}</span>
-                    ${previews}${more}
+                    ${previews}${more}${dots}
                   </div>`;
               }).join('')}
             </div>`;

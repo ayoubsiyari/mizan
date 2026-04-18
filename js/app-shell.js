@@ -228,6 +228,11 @@
     const initials = ((user.first_name || '?')[0] + (user.last_name || '')[0] || '?').toUpperCase();
     const headerHTML = `
       <header class="shell-header">
+        <button class="hamburger" id="menuToggle" aria-label="القائمة">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         <h1>${esc(cfg.title || '')}</h1>
         <div class="spacer"></div>
         <div class="search-container">
@@ -254,11 +259,34 @@
     document.body.innerHTML = `
       <div class="shell">
         ${sidebarHTML}
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <div class="shell-main">
           ${headerHTML}
           <div class="page" id="pageRoot"></div>
         </div>
       </div>`;
+
+    // ---- Mobile sidebar toggle ----
+    const sidebarEl = document.querySelector('.shell-sidebar');
+    const backdropEl = document.getElementById('sidebarBackdrop');
+    function closeSidebar() {
+      sidebarEl.classList.remove('open');
+      backdropEl.classList.remove('open');
+    }
+    function openSidebar() {
+      sidebarEl.classList.add('open');
+      backdropEl.classList.add('open');
+    }
+    document.getElementById('menuToggle').addEventListener('click', () => {
+      sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    backdropEl.addEventListener('click', closeSidebar);
+    // Auto-close when a nav link is tapped (mobile)
+    sidebarEl.querySelectorAll('nav a').forEach(a => a.addEventListener('click', () => {
+      if (window.innerWidth <= 900) closeSidebar();
+    }));
+    // Close with Esc
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
 
     // Calendar toggle
     document.getElementById('calToggle').addEventListener('click', () => {

@@ -150,10 +150,89 @@ table.data .empty { text-align: center; color: var(--muted); padding: 40px; }
 .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
 .empty-state .icon { font-size: 3rem; margin-bottom: 10px; }
 
-/* Responsive */
+/* Hamburger (mobile menu toggle), hidden on desktop */
+.hamburger {
+  display: none;
+  background: none; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px; cursor: pointer; color: var(--brand);
+  margin-inline-end: 10px;
+}
+.hamburger svg { width: 22px; height: 22px; display: block; }
+
+/* Backdrop for the mobile drawer */
+.sidebar-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 49; opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
+
+/* ============== Tablet (≤ 900px) ============== */
 @media (max-width: 900px) {
-  .shell-sidebar { transform: translateX(100%); transition: transform .2s; }
+  .hamburger { display: inline-flex; align-items: center; }
+  .shell-sidebar {
+    transform: translateX(100%); transition: transform .22s ease-out;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.1);
+  }
   .shell-sidebar.open { transform: translateX(0); }
   .shell-main { margin-inline-end: 0; }
-  .shell-header .search-input { width: 160px; }
+
+  .shell-header { padding: 10px 14px; gap: 8px; }
+  .shell-header h1 { font-size: 1.05rem; }
+  .shell-header .search-container { display: none; }      /* use global search later via icon */
+  .shell-header .user-info { display: none; }             /* only avatar on small screens */
+  .shell-header .user-menu { gap: 6px; margin-inline-start: 6px; }
+
+  .page { padding: 14px; }
+  .page-title { font-size: 1.2rem; }
+
+  /* Stat cards: 2 columns on tablets */
+  .stats-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-card { padding: 14px; }
+  .stat-value { font-size: 1.4rem; }
+
+  /* Cards & filters */
+  .card { padding: 14px; }
+  .filters { padding: 10px !important; gap: 6px; }
+  .filters input, .filters select { flex: 1 1 140px; min-width: 0; }
+
+  /* Tables keep horizontal scroll */
+  table.data th, table.data td { padding: 9px 10px; font-size: .85rem; }
+  table.data td.actions .btn-sm { padding: 5px 8px; font-size: .75rem; }
+
+  /* Modals take more screen */
+  .modal-backdrop { padding: 8px; }
+  .modal { max-height: 95vh; border-radius: 8px; }
+  .modal header, .modal footer { padding: 12px 14px; }
+  .modal .body { padding: 14px; }
+}
+
+/* Auth cards (login / register / forgot / reset) on small screens */
+@media (max-width: 560px) {
+  .auth-card { padding: 24px 18px !important; border-radius: 10px !important; }
+}
+
+/* ============== Phone (≤ 560px) ============== */
+@media (max-width: 560px) {
+  .shell-sidebar { width: 84vw; max-width: 300px; }
+
+  .page { padding: 10px; }
+  .page-header { align-items: stretch; }
+  .page-header > .btn { width: 100%; justify-content: center; }
+
+  /* Stat cards: 1 column on phones */
+  .stats-row { grid-template-columns: 1fr; }
+
+  /* Form grid: 1 column everywhere on phones */
+  .form-grid { grid-template-columns: 1fr !important; gap: 10px; }
+
+  /* Table cell spacing a bit tighter */
+  table.data th, table.data td { padding: 8px 8px; font-size: .8rem; }
+  table.data td.actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; }
+  table.data td.actions .btn-sm { flex: 1 1 auto; white-space: nowrap; }
+
+  .pagination button { padding: 5px 9px; font-size: .85rem; }
+
+  /* Modal footer: stack buttons */
+  .modal footer { flex-direction: column-reverse; }
+  .modal footer .btn { width: 100%; justify-content: center; }
 }
